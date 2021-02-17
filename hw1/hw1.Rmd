@@ -1,0 +1,305 @@
+---
+title: "DATA 622 - HW1 Penguin Classification"
+author: "Mael Illien"
+date: "2/7/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+# Logisitic and Multinomial Regression
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(caret) # For classification report
+library(pROC) # For AUC calculation
+library(nnet) # For multinomial regression
+```
+
+## Data Exploration
+
+The penguin dataset is composed of 344 observations with 8 variables, 5 of which are numeric and 3 which are qualitative. The dataset is mostly complete with just a few observations with missing values that will need to be handled. 
+
+```{r echo=FALSE}
+data <- palmerpenguins::penguins
+skim(data)
+```
+
+```{r echo=FALSE}
+data
+```
+
+The target variable of interest is the species of penguins, which are categorized into three groups: Adelie, Gentoo and Chinstrap penguins.
+
+```{r echo=FALSE}
+unique(data$species)
+```
+
+### Species Distribution on Islands
+
+From this plot, we can make a few key observations: 
+
+- Gentoo penguins are only found on Biscoe Island
+- Chinstrap pengiuns only found on Dream Island
+- Adelie penguins are found on all three islands
+- Torgersen Island only has Adelie penguins
+
+These island observations are valuable information in differentiating penguin species.
+
+```{r echo=FALSE}
+ggplot(data, aes(x = island, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip()
+```
+
+### Sex Distribution
+
+However, the sex of the penguins does not offer much information as the proportion is about even across all species. We can also note a few missing observations labeled as NA. 
+
+```{r echo=FALSE}
+ggplot(data, aes(x = sex, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip()
+```
+
+### Body Measurements
+
+When looking at body measurements we see that Adelie and Chinstrap penguins largely overlap except for `bill_length`. This suggests that we might be able to use `bill_depth`, `body_mass` and `flipper_length` to differentiate the Gentoo penguins from the other species. However, the Adelie penguin stands out from the other others in `bill_length`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data %>% select(-c(island, sex, year)) %>% 
+  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
+  ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+colors <- c("darkorange","purple","cyan4")[unclass(data$species)]
+pairs(data[,3:6], col=colors, oma=c(3,3,3,15))
+legend("bottomright", fill = unique(data$species), legend = c(levels(data$species)))
+```
+
+### Missing Values & Variable Selection
+
+We noted from the data summary above that 11 observations were missing for the `sex` variable. Given that `sex` provided no useful information for differentiation, we can safely drop it from our analysis. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
+
+```{r}
+data[!complete.cases(data), ]
+```
+
+```{r}
+data <- data[complete.cases(data), ]
+data <- select(data, -c(year, sex, island))
+```
+
+## Logistic Regression
+
+#### a. The penguin dataset has ‘species’ column. Please check how many categories you have in the species column. Conduct whatever data manipulation you need to do to be able to build a logistic regression with binary outcome. Please explain your reasoning behind your decision as you manipulate the outcome/dependent variable (species).
+#### b. Please make sure you are evaluating the independent variables appropriately in deciding which ones should be in the model.
+#### c. Provide variable interpretations in your model.
+
+We start by reducing the number of classes to two in order to apply logistic regression with a binary outcome: Gentoo and non-Gentoo penguins. 
+
+```{r message=FALSE, warning=FALSE}
+m1_data <- data
+m1_data$species <- as.numeric(data$species == "Gentoo")
+```
+
+### Logistic 1
+
+The first fitted model using all of the independent variables of interests is not statistically significant. We proceed to remove predictors one at a time until we are left with only significant predictors. As we can see from the exploratory data above, a number of variables allow for perfect separation ofthe classes. This makes logistic regression unstable as shown by the p values close to 1.
+
+```{r}
+m1a <- glm(species ~ ., data=m1_data ,family=binomial(link="logit"))
+summary(m1a)
+```
+
+### Logistic 2
+
+There are a number of ways to reduce the model. The coefficients below are still unstable. The order of elimnination of variables may seem arbitrary but the elimination order presented in the two subsequent models ultimately yields the the most significant predictors.
+
+```{r message=FALSE, warning=FALSE}
+m1b <- glm(species ~ . - flipper_length_mm, data=m1_data ,family=binomial(link="logit"))
+summary(m1b)
+```
+
+### Logistic 3
+
+The resulting model reduced to statistically significant predictors leaves only the `bill_length_mm` and `bill_depth_mm` variables. We can interpret the coefficients as follows:
+
+- A 1mm increase in bill length increases the log odds of the species being Gentoo by about 0.5, which corresponds to an odds ratio of 1.74 (74% greater odds to be Gentoo)
+- A 1mm increase in bill depth decreases the log odds of being a Gentoo penguin by about 4.47, which corresponds to an odds ratio of 0.0114 (98% lesser odds to be Gentoo)
+
+```{r message=FALSE, warning=FALSE}
+m1c <- glm(species ~ . - flipper_length_mm - body_mass_g, data=m1_data ,family=binomial(link="logit"))
+summary(m1c)
+```
+
+```{r}
+exp(m1c$coefficients)
+```
+
+We can also interpret the marginal effects as follows:
+
+- A 1% increase in bill length on average increases the probability of a Gentoo penguin by 0.7%
+- A 1% increase in bill depth on average decreases the probability of a Gentoo penguin by 5.6%
+
+
+```{r}
+# Marginal effects
+logitscalar <- mean(dlogis(predict(m1c, type="link")))
+logitscalar * coef(m1c)
+```
+
+## Logistic Classification Metrics
+
+#### For your model from #1, please provide: AUC, Accuracy, TPR, FPR, TNR, FNR (20)
+
+From the classification report below we can pick out the following metrics:
+
+- AUC: 0.998
+- Accuracy: 0.982
+- TPR (Sensitivity): 0.9748
+- FPR (1 - TNR): 0.014
+- TNR (Specificity): 0.9860
+- FNR (1 - TPR): 0.0252
+
+```{r}
+glm.probs <- predict(m1c, type="response")
+glm.pred <- ifelse(glm.probs > 0.5, 1, 0)
+results <- tibble(target=m1_data$species, pred=glm.pred)
+results <- results %>% mutate(pred.class = as.factor(pred), target.class = as.factor(target))
+  
+print(confusionMatrix(results$pred.class,results$target.class, positive = "1"))
+```
+```{r message=FALSE, warning=FALSE}
+plot(roc(m1_data$species, glm.probs), print.auc = TRUE)
+```
+
+## Multinomial Logistic Regression
+
+#### a. Please fit it a multinomial logistic regression where your outcome variable is ‘species’.
+
+#### b. Please be sure to evaluate the independent variables appropriately to fit your best parsimonious model.
+
+#### c. Please be sure to interpret your variables in the model.
+
+The multinomial logistic regression model uses the same starting data as the logistic regression above. We relevel the Adelie species of penguins as a reference level for multinomial regression. The function `multinom_metrics` is introduced to summarize the p-values of each model as well as their classification performance. 
+
+```{r}
+model2_data <- data
+model2_data$species <- relevel(model2_data$species, ref = "Adelie")
+```
+
+```{r}
+multinom_metrics <- function(model) {
+  z <- summary(model)$coefficients/summary(model)$standard.errors
+  p <- (1 - pnorm(abs(z), 0, 1)) * 2
+  print("P-values:")
+  print(p)
+  
+  multi.pred <- predict(model, type="class", model2_data)
+  results <- tibble(target=model2_data$species, pred=multi.pred)
+  results <- results %>% mutate(pred.class = pred, target.class = target)
+  
+  print(confusionMatrix(results$pred.class,results$target.class))
+}
+```
+
+### Multinomial 1
+
+The first multinomial model contains all the predictors that were used in the initial logistic model. The model output differs from the usual `glm` above so we rely on the p values calculated by the multinom_metrics function to evaluate the statistical significance of the predictors. We note from the confusion matrix below that the model results in perfect classification of penguins species with 100% accuracy. However, we also note in the output below that the `body_mass_g` predictor has a very high p-value for both Chinstrap and Gentoo penguins. This predictor is dropped in subsequent models. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+m2a <- multinom(species ~ ., data = model2_data)
+```
+
+```{r}
+summary(m2a)
+```
+
+
+```{r}
+multinom_metrics(m2a)
+```
+
+### Multinomial 2
+
+By removing the `body_mass_g` predictor from the variables to include in the model, we end up with a model with only statististically significant predictors. The confusion matrix reveals that 3 penguins have been misclassified but the model accuracy remains very high at 99.1%. This is our preferred model.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+m2b <- multinom(species ~ . - body_mass_g, data = model2_data)
+```
+
+```{r}
+summary(m2b)
+```
+
+
+```{r}
+multinom_metrics(m2b)
+```
+
+```{r}
+exp(coef(m2b))
+```
+
+The model logit coefficients are transformed to relative risk ratios (odds) and can be interpretted as follows. In comparison to Adelie penguins and keeping all other variables constant:
+
+- an increase of 1 unit in bill length makes it more 1.6 times more likely for a penguin to be Gentoo and 15.9 more so to be Chinstrap 
+- an increase of 1 unti in bill depth makes it 0.012 time less likely for a penguin to be Chinstrap and even less so Gentoo (nearly 0)
+- an increase of 1 unit  in flipper length makes it 0.84 times less likely for a penguin to be Chinstrap but 12.3 more likely to be Gentoo
+
+### Multinomial 3
+
+For comparison, we also take a look at another model that uses the same predictors as the final logistic regression model above which is more parsimonious. We see the predictors remain significant but the accuracy has dropped slighly to 96.4%. Because of the reduction in accuracy on the training data, the previous model (Multinomial 2) is preferred.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+m2c <- multinom(species ~ . - flipper_length_mm - body_mass_g, data = model2_data)
+```
+```{r}
+summary(m2c)
+```
+
+
+
+```{r}
+multinom_metrics(m2c)
+```
+
+## Multinomial Fit
+
+#### Extra credit: what would be some of the fit statistics you would want to evaluate for your model in question #3? Feel free to share whatever you can provide. (10)
+
+There are a number of methods that can be used to evaluate the fit of the model:
+
+- Using the deviance to compare two nested models with a chi-squared test
+- Hosmer-Lemeshow test
+- AIC
+- McFadden's Pseudo R-squared
+- Fitting separate logit model for diagnosis
+ 
