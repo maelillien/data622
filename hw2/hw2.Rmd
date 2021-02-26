@@ -1,0 +1,246 @@
+---
+title: "DATA 622 - HW2 Penguin Classification"
+author: "Mael Illien"
+date: "2/22/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+# LDA, QDA & Naive Bayes
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(caret) # For featureplot, classification report
+library(MASS) # For LDA, QDA
+library(pROC) # For AUC calculation
+```
+
+## Data Exploration
+
+The penguin dataset is composed of 344 observations with 8 variables, 5 of which are numeric and 3 which are qualitative. The dataset is mostly complete with just a few observations with missing values that will need to be handled. 
+
+```{r echo=FALSE}
+data <- palmerpenguins::penguins
+skim(data)
+```
+
+```{r echo=FALSE}
+data
+```
+
+The target variable of interest is the species of penguins, which are categorized into three groups: Adelie, Gentoo and Chinstrap penguins.
+
+```{r echo=FALSE}
+unique(data$species)
+```
+
+### Species Distribution on Islands
+
+From this plot, we can make a few key observations: 
+
+- Gentoo penguins are only found on Biscoe Island
+- Chinstrap pengiuns only found on Dream Island
+- Adelie penguins are found on all three islands
+- Torgersen Island only has Adelie penguins
+
+These island observations are valuable information in differentiating penguin species.
+
+```{r echo=FALSE}
+ggplot(data, aes(x = island, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip()
+```
+
+### Sex Distribution
+
+However, the sex of the penguins does not offer much information as the proportion is about even across all species. We can also note a few missing observations labeled as NA. 
+
+```{r echo=FALSE}
+ggplot(data, aes(x = sex, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip()
+```
+
+### Missing Values & Variable Selection
+
+We noted from the data summary above that 11 observations were missing for the `sex` variable. Given that `sex` provided no useful information for differentiation, we can safely drop it from our analysis. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
+
+```{r}
+data[!complete.cases(data), ]
+```
+
+```{r}
+data <- data[complete.cases(data), ]
+data <- dplyr::select(data, -c(year, sex, island))
+```
+
+### Body Measurements
+
+When looking at body measurements we see that Adelie and Chinstrap penguins largely overlap except for `bill_length`. This suggests that we might be able to use `bill_depth`, `body_mass` and `flipper_length` to differentiate the Gentoo penguins from the other species. However, the Adelie penguin stands out from the other others in `bill_length`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
+  ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+colors <- c("darkorange","purple","cyan4")[unclass(data$species)]
+pairs(data[,2:5], col=colors, oma=c(3,3,3,15))
+legend("bottomright", fill = unique(data$species), legend = c(levels(data$species)))
+```
+
+Using the featurePlot function from the caret package we can easily display data distributions such as the scatter plot matrix similat to the one above. We see on the univariate feature plots below that the data is aproximatelly normally distibuted. This is an import assumption of LDA and QDA.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(AppliedPredictiveModeling)
+transparentTheme(trans = .4)
+featurePlot(x = data[, 2:5], 
+            y = data$species, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 4))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=(12,6)}
+transparentTheme(trans = .9)
+featurePlot(x = data[, 2:5], 
+            y = data$species, 
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(4, 1), 
+            auto.key = list(columns = 3))
+```
+
+
+
+### Data Splitting
+
+The data is split into training and testing sets 80%/20%.
+
+```{r}
+set.seed(622)
+trainIndex <- createDataPartition(data$species, p = .8, list = FALSE, times = 1)
+
+training <- data[ trainIndex,]
+testing  <- data[-trainIndex,]
+```
+
+## Linear Discriminant Analysis
+
+LDA assumes that the predictors are distributed as multivariate gaussian with common covariance. Based on the distribution plot above, LDA seems to be a good fit.
+
+```{r}
+lda.fit <- lda(species ~ ., data=training)
+lda.fit
+```
+
+```{r}
+lda.pred <- predict(lda.fit, testing)
+```
+
+```{r}
+plot(lda.fit)
+```
+
+
+```{r}
+scores <- data.frame()
+cm.lda <- confusionMatrix(lda.pred$class, testing$species)
+lda.acc <- cm.lda[[3]][1]
+scores <-rbind(scores, data.frame(model="LDA", accuracy=lda.acc))
+cm.lda
+```
+
+## Quadratic Discriminant Analysis
+
+
+
+```{r}
+qda.fit <- qda(species ~ ., data=training)
+qda.fit
+```
+
+```{r}
+qda.pred <- predict(qda.fit, testing)
+cm.qda <- confusionMatrix(qda.pred$class, testing$species)
+qda.acc <- cm.qda[[3]][1]
+scores <-rbind(scores, data.frame(model="QDA", accuracy=qda.acc))
+cm.qda
+```
+
+## Naive Bayes
+
+
+
+```{r}
+library(e1071)
+
+features <- setdiff(names(training), "species")
+x <- training[,features]
+y <- training$species
+
+model.naive <- naiveBayes(x = x,y = y, laplace = 1)
+
+result.naive <- predict(model.naive, testing %>% dplyr::select(-species))
+
+# Make confusion matrix
+cm.naive <- confusionMatrix(result.naive, testing$species)
+nb.acc <- cm.naive[[3]][1]
+scores <-rbind(scores, data.frame(model="NB", accuracy=nb.acc))
+cm.naive
+```
+
+## Model Comparison
+
+
+
+```{r}
+scores
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
