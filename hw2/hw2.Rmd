@@ -28,7 +28,9 @@ library(skimr)
 library(tidyverse)
 library(caret) # For featureplot, classification report
 library(MASS) # For LDA, QDA
-library(pROC) # For AUC calculation
+library(e1071) # For Naive Bayes
+library(corrplot) # For correlation matrix
+library(klaR) # For QDA partition plot
 ```
 
 ## Data Exploration
@@ -68,7 +70,8 @@ ggplot(data, aes(x = island, fill = species)) +
                     guide = FALSE) +
   theme_minimal() +
   facet_wrap(~species, ncol = 1) +
-  coord_flip()
+  coord_flip() +
+  ggtitle("Species Distribution by Island")
 ```
 
 ### Sex Distribution
@@ -82,7 +85,8 @@ ggplot(data, aes(x = sex, fill = species)) +
                     guide = FALSE) +
   theme_minimal() +
   facet_wrap(~species, ncol = 1) +
-  coord_flip()
+  coord_flip() +
+  ggtitle("Sex Distribution by Species")
 ```
 
 ### Missing Values & Variable Selection
@@ -106,7 +110,9 @@ When looking at body measurements we see that Adelie and Chinstrap penguins larg
 data %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
   ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
   facet_wrap(~variable, scales = "free") +
-  scale_fill_manual(values = c("darkorange","purple","cyan4"))
+  scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Body Measurements Boxplot")
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -115,7 +121,7 @@ pairs(data[,2:5], col=colors, oma=c(3,3,3,15))
 legend("bottomright", fill = unique(data$species), legend = c(levels(data$species)))
 ```
 
-Using the featurePlot function from the caret package we can easily display data distributions such as the scatter plot matrix similat to the one above. We see on the univariate feature plots below that the data is aproximatelly normally distibuted. This is an import assumption of LDA and QDA.
+Using the featurePlot function from the caret package we can easily display data distributions such as the scatter plot matrix similar to the one above. 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 library(AppliedPredictiveModeling)
@@ -127,7 +133,9 @@ featurePlot(x = data[, 2:5],
             auto.key = list(columns = 4))
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=(12,6)}
+We see on the univariate feature plots below that the data is aproximatelly normally distibuted. This is an important assumption of LDA and QDA.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,6)}
 transparentTheme(trans = .9)
 featurePlot(x = data[, 2:5], 
             y = data$species, 
@@ -142,23 +150,48 @@ featurePlot(x = data[, 2:5],
             auto.key = list(columns = 3))
 ```
 
+### Multicollinearity
+
+Taking a look at the correlation matrix below, we can make a few observations, notably that `flipper_length` is highly positively correlated with `body_mass` which makes sense given that larger penguins should have larger flippers. The other correlations are less obvious to interpret. Given that the dataset only contains a few predictors, we choose not to exclude any variables based on multicollinearity at this time.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+M <-cor(data[, 2:5])
+p.mat <- cor.mtest(data[, 2:5])
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat$p, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         ) 
+```
 
 
-### Data Splitting
+## Data Splitting
 
-The data is split into training and testing sets 80%/20%.
+The data is split into training and testing sets 80%/20%. The test set contains 65 observations.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 set.seed(622)
 trainIndex <- createDataPartition(data$species, p = .8, list = FALSE, times = 1)
 
 training <- data[ trainIndex,]
 testing  <- data[-trainIndex,]
+
+dim(testing)
 ```
 
 ## Linear Discriminant Analysis
 
-LDA assumes that the predictors are distributed as multivariate gaussian with common covariance. Based on the distribution plot above, LDA seems to be a good fit.
+LDA assumes that the predictors are distributed as multivariate gaussian with common covariance. Based on the distribution plot above, LDA seems to be a good fit. 
+
+By the proportion of trace, we can see that the first linear discriminant LD1 achieves 87.7% separation and the second, LDA 12.3%.
 
 ```{r}
 lda.fit <- lda(species ~ ., data=training)
@@ -169,10 +202,7 @@ lda.fit
 lda.pred <- predict(lda.fit, testing)
 ```
 
-```{r}
-plot(lda.fit)
-```
-
+The LDA model performed very well with 96.9% accuracy on the test set. Only two predictions were misclasffied. 
 
 ```{r}
 scores <- data.frame()
@@ -182,14 +212,23 @@ scores <-rbind(scores, data.frame(model="LDA", accuracy=lda.acc))
 cm.lda
 ```
 
+The partition plot below helps to visualize LDA. The observations that end up misclafied are shown in red. In the case of LDA, the decision boundary is linear. 
+
+```{r echo=FALSE}
+partimat(species ~ ., data=training, method="lda")
+```
+
+
 ## Quadratic Discriminant Analysis
 
-
+Unlike LDA, QDA assumes that each class has its own covariance matrix. As a result, the decision boundary is quadratic.
 
 ```{r}
 qda.fit <- qda(species ~ ., data=training)
 qda.fit
 ```
+
+The QDA model performed even better with 98.5% accuracy and only 1 observation misclassified.
 
 ```{r}
 qda.pred <- predict(qda.fit, testing)
@@ -199,19 +238,24 @@ scores <-rbind(scores, data.frame(model="QDA", accuracy=qda.acc))
 cm.qda
 ```
 
+Unlike the LDA partition plot, we see below that the decision boundary is quadratic. We can note in particular that the curvature of the pink region in the last subplot helps limit the number of Chinstrap penguins classified as Gentoo better than LDA did for the same plot. In this case, it seems that even with qda most decision boundaries remain nearly linear.
+
+```{r echo=FALSE}
+partimat(species ~ ., data=training, method="qda")
+```
+
 ## Naive Bayes
 
+The Naive Bayes classifier assumes that all features are equally important and independent which is often not the case and may result in some bias. However, the assumption of independence simplifies the comptutations by turning conditional probabilities into products of probabilities. Here we do not need to determine the exact posterior probability but simply which class is more likely. 
 
+The classification result for Naive Bayes on the test set yielded the same performance as LDA 96.7% accuracy and two misclassified penguins.
 
-```{r}
-library(e1071)
-
+```{r message=FALSE, warning=FALSE}
 features <- setdiff(names(training), "species")
 x <- training[,features]
 y <- training$species
 
 model.naive <- naiveBayes(x = x,y = y, laplace = 1)
-
 result.naive <- predict(model.naive, testing %>% dplyr::select(-species))
 
 # Make confusion matrix
@@ -223,14 +267,70 @@ cm.naive
 
 ## Model Comparison
 
-
+The data frame below summarizes the model accuracies from above. QDA was the best performing model on the test set. However, the test set only comprised of 65 observations.
 
 ```{r}
 scores
 ```
 
+The function below is created to test our models from above on more observations. By iterating over 100 train/test splits of the data, we can evaluate the performance of the models on more unseen data. Note that new models are fitted to each new split of the data. 
 
+```{r}
+set.seed(25)
+sim_test_set <- function() {
+  
+  sim_scores <- data.frame()
+  features <- setdiff(names(training), "species")
+  
+  for (i in seq(1:100)) {
+    trainIndex <- createDataPartition(data$species, p = .8, list = FALSE, times = 1)
+    training <- data[ trainIndex,]
+    testing  <- data[-trainIndex,]
+    
+    # LDA
+    lda.fit <- lda(species ~ ., data=training)
+    lda.pred <- predict(lda.fit, testing)
+    cm.lda <- confusionMatrix(lda.pred$class, testing$species)
+    lda.acc <- cm.lda[[3]][1]
+    
+    # QDA
+    qda.fit <- qda(species ~ ., data=training)
+    qda.pred <- predict(qda.fit, testing)
+    cm.qda <- confusionMatrix(qda.pred$class, testing$species)
+    qda.acc <- cm.qda[[3]][1]
+    
+    # Naive Bayes
+    x <- training[,features]
+    y <- training$species
+    model.naive <- naiveBayes(x = x,y = y, laplace = 1)
+    result.naive <- predict(model.naive, testing %>% dplyr::select(-species))
+    cm.naive <- confusionMatrix(result.naive, testing$species)
+    nb.acc <- cm.naive[[3]][1]
+    
+    sim_scores <-rbind(sim_scores, data.frame(lda=lda.acc, qda=qda.acc, nb=nb.acc))
+  }
+  
+  return(sim_scores)
+}
+```
 
+```{r}
+sim_test_acc <- sim_test_set()
+sim_test_acc
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+sim_test_acc %>%  gather(key = "model", value = "accuracy", lda:nb) %>% 
+  ggplot(aes(x=model, y=accuracy)) + geom_boxplot() +
+  theme_minimal() +
+  ggtitle("Model Performance Comparison")
+```
+
+The performance is summarized in the boxplot above. While the performance of the LDA and NB models were identical over the original test set, we see here that over 100 data splits, the Naive Bayes model tend to have lower accuracy and a longer lower tail than LDA. As before, we see that QDA performed the best.
+
+In general LDA models are more stable than logistic regression when the classes are well separated and the features are approximately normal, which is the case here. However, by assuming that the predictors are distributed as multivariate gaussian with common covariance we are limiting the flexibility of the fit. When comparing partition plots between LDA and QDA we saw that the quadratic boundary helped classify more correct observations. However, most QDA boundaries were nearly linear showing that the LDA assumptions nearly hold. The correlation between bill depth and flipper length as well as body weight and flipper length was an early indication that QDA might be a better fit.
+
+While the Naive Bayes model is easy to implement it likely suffers in our case from the assumption of feature independence. As stated above, some of the predictor variables were correlated, thereby violating the assumption and introducing bias.
 
 
 
