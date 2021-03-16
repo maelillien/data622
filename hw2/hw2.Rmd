@@ -91,7 +91,7 @@ ggplot(data, aes(x = sex, fill = species)) +
 
 ### Missing Values & Variable Selection
 
-We noted from the data summary above that 11 observations were missing for the `sex` variable. Given that `sex` provided no useful information for differentiation, we can safely drop it from our analysis. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
+We noted from the data summary above that 11 observations were missing for the `sex` variable. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. We are not looking for any time series modeling. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
 
 ```{r}
 data[!complete.cases(data), ]
@@ -99,7 +99,7 @@ data[!complete.cases(data), ]
 
 ```{r}
 data <- data[complete.cases(data), ]
-data <- dplyr::select(data, -c(year, sex, island))
+data <- dplyr::select(data, -c(year, island))
 ```
 
 ### Body Measurements
@@ -202,7 +202,7 @@ lda.fit
 lda.pred <- predict(lda.fit, testing)
 ```
 
-The LDA model performed very well with 96.9% accuracy on the test set. Only two predictions were misclasffied. 
+The LDA model performed very well with 100% accuracy on the test set. Another iteration of this model that omitted the `sex` variable yielded worst performance with 96.9% accuracy and 2 misclassified penguins. This shows that `sex` has some predictive power and should be included in the model.
 
 ```{r}
 scores <- data.frame()
@@ -212,9 +212,9 @@ scores <-rbind(scores, data.frame(model="LDA", accuracy=lda.acc))
 cm.lda
 ```
 
-The partition plot below helps to visualize LDA. The observations that end up misclafied are shown in red. In the case of LDA, the decision boundary is linear. 
+The partition plot below helps to visualize LDA. The observations that end up misclassified are shown in red. In the case of LDA, the decision boundary is linear. 
 
-```{r echo=FALSE}
+```{r echo=FALSE, fig.dim=c(12,6)}
 partimat(species ~ ., data=training, method="lda")
 ```
 
@@ -228,7 +228,7 @@ qda.fit <- qda(species ~ ., data=training)
 qda.fit
 ```
 
-The QDA model performed even better with 98.5% accuracy and only 1 observation misclassified.
+The QDA model performed even better with 98.5% accuracy and only 1 observation misclassified. The QDA model performs the same when the categorical variable `sex` was omitted. 
 
 ```{r}
 qda.pred <- predict(qda.fit, testing)
@@ -238,9 +238,9 @@ scores <-rbind(scores, data.frame(model="QDA", accuracy=qda.acc))
 cm.qda
 ```
 
-Unlike the LDA partition plot, we see below that the decision boundary is quadratic. We can note in particular that the curvature of the pink region in the last subplot helps limit the number of Chinstrap penguins classified as Gentoo better than LDA did for the same plot. In this case, it seems that even with qda most decision boundaries remain nearly linear.
+Unlike the LDA partition plot, we see below that the decision boundary is quadratic. We can note in particular that the curvature of the pink region in the sixth subplot helps limit the number of Chinstrap penguins classified as Gentoo better than LDA did for the same plot. In this case, it seems that even with QDA most decision boundaries remain nearly linear.
 
-```{r echo=FALSE}
+```{r echo=FALSE, fig.dim=c(12,6)}
 partimat(species ~ ., data=training, method="qda")
 ```
 
@@ -248,7 +248,7 @@ partimat(species ~ ., data=training, method="qda")
 
 The Naive Bayes classifier assumes that all features are equally important and independent which is often not the case and may result in some bias. However, the assumption of independence simplifies the comptutations by turning conditional probabilities into products of probabilities. Here we do not need to determine the exact posterior probability but simply which class is more likely. 
 
-The classification result for Naive Bayes on the test set yielded the same performance as LDA 96.7% accuracy and two misclassified penguins.
+The classification result for Naive Bayes on the test set yielded 96.7% accuracy and two misclassified penguins.
 
 ```{r message=FALSE, warning=FALSE}
 features <- setdiff(names(training), "species")
@@ -267,7 +267,7 @@ cm.naive
 
 ## Model Comparison
 
-The data frame below summarizes the model accuracies from above. QDA was the best performing model on the test set. However, the test set only comprised of 65 observations.
+The data frame below summarizes the model accuracies from above. LDA was the best performing model on the test set. However, the test set only comprised of 65 observations. We can expand our model evaluation on the test with alternate train-test data splits.
 
 ```{r}
 scores
@@ -326,9 +326,9 @@ sim_test_acc %>%  gather(key = "model", value = "accuracy", lda:nb) %>%
   ggtitle("Model Performance Comparison")
 ```
 
-The performance is summarized in the boxplot above. While the performance of the LDA and NB models were identical over the original test set, we see here that over 100 data splits, the Naive Bayes model tend to have lower accuracy and a longer lower tail than LDA. As before, we see that QDA performed the best.
+The performance is summarized in the boxplot above. While the performance of the LDA models was the best over the original test set, we see here that over 100 data splits, LDA and QDA models are nearly identical. The Naive Bayes model tend to have lower accuracy and a longer lower tail than LDA. 
 
-In general LDA models are more stable than logistic regression when the classes are well separated and the features are approximately normal, which is the case here. However, by assuming that the predictors are distributed as multivariate gaussian with common covariance we are limiting the flexibility of the fit. When comparing partition plots between LDA and QDA we saw that the quadratic boundary helped classify more correct observations. However, most QDA boundaries were nearly linear showing that the LDA assumptions nearly hold. The correlation between bill depth and flipper length as well as body weight and flipper length was an early indication that QDA might be a better fit.
+In general LDA models are more stable than logistic regression when the classes are well separated and the features are approximately normal, which is the case here. However, by assuming that the predictors are distributed as multivariate gaussian with common covariance we are limiting the flexibility of the fit. When comparing partition plots between LDA and QDA we saw that most QDA boundaries were nearly linear showing that the LDA assumptions nearly hold. The correlation between bill depth and flipper length as well as body weight and flipper length was an early indication that QDA might be a better fit. However, QDA provided no meaningful gain in performance over LDA. Therefore we prefer the LDA model which is more parsimious since it has fewer covariance parameters to estaimte.
 
 While the Naive Bayes model is easy to implement it likely suffers in our case from the assumption of feature independence. As stated above, some of the predictor variables were correlated, thereby violating the assumption and introducing bias.
 
