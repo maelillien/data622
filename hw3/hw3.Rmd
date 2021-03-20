@@ -28,6 +28,7 @@ library(skimr)
 library(tidyverse)
 library(caret) # For featureplot, classification report
 library(corrplot) # For correlation matrix
+library(AppliedPredictiveModeling)
 ```
 
 # Penguins Dataset
@@ -37,18 +38,18 @@ library(corrplot) # For correlation matrix
 The penguin dataset is composed of 344 observations with 8 variables, 5 of which are numeric and 3 which are qualitative. The dataset is mostly complete with just a few observations with missing values that will need to be handled. 
 
 ```{r echo=FALSE}
-data <- palmerpenguins::penguins
-skim(data)
+penguins <- palmerpenguins::penguins
+skim(penguins)
 ```
 
 ```{r echo=FALSE}
-data
+penguins
 ```
 
 The target variable of interest is the species of penguins, which are categorized into three groups: Adelie, Gentoo and Chinstrap penguins.
 
 ```{r echo=FALSE}
-unique(data$species)
+unique(penguins$species)
 ```
 
 ### Species Distribution on Islands
@@ -63,7 +64,7 @@ From this plot, we can make a few key observations:
 These island observations are valuable information in differentiating penguin species.
 
 ```{r echo=FALSE}
-ggplot(data, aes(x = island, fill = species)) +
+ggplot(penguins, aes(x = island, fill = species)) +
   geom_bar(alpha = 0.8) +
   scale_fill_manual(values = c("darkorange","purple","cyan4"),
                     guide = FALSE) +
@@ -78,7 +79,7 @@ ggplot(data, aes(x = island, fill = species)) +
 However, the sex of the penguins does not offer much information as the proportion is about even across all species. We can also note a few missing observations labeled as NA. 
 
 ```{r echo=FALSE}
-ggplot(data, aes(x = sex, fill = species)) +
+ggplot(penguins, aes(x = sex, fill = species)) +
   geom_bar(alpha = 0.8) +
   scale_fill_manual(values = c("darkorange","purple","cyan4"),
                     guide = FALSE) +
@@ -93,12 +94,12 @@ ggplot(data, aes(x = sex, fill = species)) +
 We noted from the data summary above that 11 observations were missing for the `sex` variable. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. We are not looking for any time series modeling. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
 
 ```{r}
-data[!complete.cases(data), ]
+penguins[!complete.cases(penguins), ]
 ```
 
 ```{r}
-data <- data[complete.cases(data), ]
-data <- dplyr::select(data, -c(year, island))
+penguins <- penguins[complete.cases(penguins), ]
+penguins <- dplyr::select(penguins, -c(year, island))
 ```
 
 ### Body Measurements
@@ -106,7 +107,7 @@ data <- dplyr::select(data, -c(year, island))
 When looking at body measurements we see that Adelie and Chinstrap penguins largely overlap except for `bill_length`. This suggests that we might be able to use `bill_depth`, `body_mass` and `flipper_length` to differentiate the Gentoo penguins from the other species. However, the Adelie penguin stands out from the other others in `bill_length`
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-data %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
+penguins %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
   ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
   facet_wrap(~variable, scales = "free") +
   scale_fill_manual(values = c("darkorange","purple","cyan4")) +
@@ -115,17 +116,17 @@ data %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_ma
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-colors <- c("darkorange","purple","cyan4")[unclass(data$species)]
-pairs(data[,2:5], col=colors, oma=c(3,3,3,15))
-legend("bottomright", fill = unique(data$species), legend = c(levels(data$species)))
+colors <- c("darkorange","purple","cyan4")[unclass(penguins$species)]
+pairs(penguins[,2:5], col=colors, oma=c(3,3,3,15))
+legend("bottomright", fill = unique(penguins$species), legend = c(levels(penguins$species)))
 ```
 
 We see on the univariate feature plots below that the data is aproximatelly normally distributed.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,6)}
 transparentTheme(trans = .9)
-featurePlot(x = data[, 2:5], 
-            y = data$species, 
+featurePlot(x = penguins[, 2:5], 
+            y = penguins$species, 
             plot = "density", 
             ## Pass in options to xyplot() to 
             ## make it prettier
@@ -142,8 +143,8 @@ featurePlot(x = data[, 2:5],
 Taking a look at the correlation matrix below, we can make a few observations, notably that `flipper_length` is highly positively correlated with `body_mass` which makes sense given that larger penguins should have larger flippers. The other correlations are less obvious to interpret. Given that the dataset only contains a few predictors, we choose not to exclude any variables based on multicollinearity at this time.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-M <-cor(data[, 2:5])
-p.mat <- cor.mtest(data[, 2:5])
+M <-cor(penguins[, 2:5])
+p.mat <- cor.mtest(penguins[, 2:5])
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -166,10 +167,10 @@ The data is split into training and testing sets 80%/20%. The test set contains 
 
 ```{r message=FALSE, warning=FALSE}
 set.seed(622)
-trainIndex <- createDataPartition(data$species, p = .8, list = FALSE, times = 1)
+trainIndex <- createDataPartition(penguins$species, p = .8, list = FALSE, times = 1)
 
-training <- data[ trainIndex,]
-testing  <- data[-trainIndex,]
+training <- penguins[ trainIndex,]
+testing  <- penguins[-trainIndex,]
 
 dim(testing)
 ```
@@ -177,6 +178,10 @@ dim(testing)
 ## K-Nearest Neighbors
 
 # Loan Approval Dataset
+
+```{r}
+loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
+```
 
 ## Data Exploration
 
