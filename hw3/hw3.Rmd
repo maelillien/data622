@@ -1,0 +1,203 @@
+---
+title: "DATA 622 HW3 - Classification using KNN, Decision Trees, Random Forests and Gradient Boosting"
+author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
+date: "3/19/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+# KNN, Decision Trees, Random Forests and Gradient Boosting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(caret) # For featureplot, classification report
+library(corrplot) # For correlation matrix
+```
+
+# Penguins Dataset
+
+## Data Exploration
+
+The penguin dataset is composed of 344 observations with 8 variables, 5 of which are numeric and 3 which are qualitative. The dataset is mostly complete with just a few observations with missing values that will need to be handled. 
+
+```{r echo=FALSE}
+data <- palmerpenguins::penguins
+skim(data)
+```
+
+```{r echo=FALSE}
+data
+```
+
+The target variable of interest is the species of penguins, which are categorized into three groups: Adelie, Gentoo and Chinstrap penguins.
+
+```{r echo=FALSE}
+unique(data$species)
+```
+
+### Species Distribution on Islands
+
+From this plot, we can make a few key observations: 
+
+- Gentoo penguins are only found on Biscoe Island
+- Chinstrap pengiuns only found on Dream Island
+- Adelie penguins are found on all three islands
+- Torgersen Island only has Adelie penguins
+
+These island observations are valuable information in differentiating penguin species.
+
+```{r echo=FALSE}
+ggplot(data, aes(x = island, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip() +
+  ggtitle("Species Distribution by Island")
+```
+
+### Sex Distribution
+
+However, the sex of the penguins does not offer much information as the proportion is about even across all species. We can also note a few missing observations labeled as NA. 
+
+```{r echo=FALSE}
+ggplot(data, aes(x = sex, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip() +
+  ggtitle("Sex Distribution by Species")
+```
+
+### Missing Values & Variable Selection
+
+We noted from the data summary above that 11 observations were missing for the `sex` variable. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. We are not looking for any time series modeling. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
+
+```{r}
+data[!complete.cases(data), ]
+```
+
+```{r}
+data <- data[complete.cases(data), ]
+data <- dplyr::select(data, -c(year, island))
+```
+
+### Body Measurements
+
+When looking at body measurements we see that Adelie and Chinstrap penguins largely overlap except for `bill_length`. This suggests that we might be able to use `bill_depth`, `body_mass` and `flipper_length` to differentiate the Gentoo penguins from the other species. However, the Adelie penguin stands out from the other others in `bill_length`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
+  ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Body Measurements Boxplot")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+colors <- c("darkorange","purple","cyan4")[unclass(data$species)]
+pairs(data[,2:5], col=colors, oma=c(3,3,3,15))
+legend("bottomright", fill = unique(data$species), legend = c(levels(data$species)))
+```
+
+We see on the univariate feature plots below that the data is aproximatelly normally distributed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,6)}
+transparentTheme(trans = .9)
+featurePlot(x = data[, 2:5], 
+            y = data$species, 
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(4, 1), 
+            auto.key = list(columns = 3))
+```
+
+### Multicollinearity
+
+Taking a look at the correlation matrix below, we can make a few observations, notably that `flipper_length` is highly positively correlated with `body_mass` which makes sense given that larger penguins should have larger flippers. The other correlations are less obvious to interpret. Given that the dataset only contains a few predictors, we choose not to exclude any variables based on multicollinearity at this time.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+M <-cor(data[, 2:5])
+p.mat <- cor.mtest(data[, 2:5])
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat$p, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         ) 
+```
+
+
+## Data Splitting
+
+The data is split into training and testing sets 80%/20%. The test set contains 65 observations.
+
+```{r message=FALSE, warning=FALSE}
+set.seed(622)
+trainIndex <- createDataPartition(data$species, p = .8, list = FALSE, times = 1)
+
+training <- data[ trainIndex,]
+testing  <- data[-trainIndex,]
+
+dim(testing)
+```
+
+## K-Nearest Neighbors
+
+# Loan Approval Dataset
+
+## Data Exploration
+
+## Data Processing
+
+## Decision Trees
+
+## Random Forests
+
+## Gradient Boosting
+
+## Model Performance
+
+
+
+
+
+
+
+
+
+
+
+
