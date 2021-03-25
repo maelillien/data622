@@ -160,22 +160,50 @@ corrplot(M, method="color", col=col(200),
          ) 
 ```
 
+## K-Nearest Neighbors
 
-## Data Splitting
+The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the same scale. Here we use the `scale` argument to the `preProcess` parameter of the traning function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268. 
 
-The data is split into training and testing sets 80%/20%. The test set contains 65 observations.
+```{r}
+penguins_knn <- penguins
+penguins_knn$sex <- as.numeric(penguins_knn$sex)-1 # recode as 1 or 0
 
-```{r message=FALSE, warning=FALSE}
 set.seed(622)
-trainIndex <- createDataPartition(penguins$species, p = .8, list = FALSE, times = 1)
+trainIndex <- createDataPartition(penguins_knn$species, p = .8, list = FALSE, times = 1)
 
-training <- penguins[ trainIndex,]
-testing  <- penguins[-trainIndex,]
-
-dim(testing)
+knn_training <- penguins_knn[ trainIndex,]
+knn_testing  <- penguins_knn[-trainIndex,]
 ```
 
-## K-Nearest Neighbors
+We performed 10-fold crossvalidation to determine the optimal parameter k for our model. 
+
+```{r}
+trControl <- trainControl(method  = "cv",
+                          number  = 10)
+
+knn.fit <- train(species ~ .,
+             method     = "knn",
+             tuneGrid   = expand.grid(k = 1:10),
+             trControl  = trControl,
+             preProcess = c("center","scale"),
+             metric     = "Accuracy",
+             data       = knn_training)
+```
+
+```{r}
+knn.fit
+```
+
+
+```{r}
+plot(knn.fit)
+```
+
+```{r}
+knnPredict <- predict(knn.fit, newdata = knn_testing) 
+
+confusionMatrix(knnPredict, knn_testing$species)
+```
 
 # Loan Approval Dataset
 
