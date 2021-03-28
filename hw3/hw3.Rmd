@@ -211,13 +211,126 @@ confusionMatrix(knnPredict, knn_testing$species)
 loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
 ```
 
+```{r}
+skim(loan)
+```
+
+
+
+
 ## Data Exploration
+
+```{r}
+loan %>% select(is.factor)
+```
+
 
 ## Data Processing
 
+```{r}
+loan$Loan_Status <- as.factor(ifelse(loan$Loan_Status=='Y',1,0))
+loan$Property_Area <- as.factor(loan$Property_Area)
+loan$Self_Employed <- as.factor(ifelse(loan$Self_Employed=='Yes',1,0))
+loan$Education <- as.factor(ifelse(loan$Education=='Graduate',1,0))
+loan$Married <- as.factor(ifelse(loan$Married=='Yes',1,0))
+loan$Gender<- as.factor(ifelse(loan$Gender=='Female',1,0))
+levels(loan$Dependents) <- c(levels((loan$Dependents)), "3")
+loan$Dependents[loan$Dependents == '3+'] <- '3'
+loan <- loan %>% mutate(totalIncome = ApplicantIncome + CoapplicantIncome)
+loan <- select(loan, -c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
+
+loan <- loan[complete.cases(loan), ]
+```
+
+```{r}
+trainIndex <- createDataPartition(loan$Loan_Status, p = .7, list = FALSE, times = 1)
+
+tree_training <- loan[ trainIndex,]
+tree_testing  <- loan[-trainIndex,]
+```
+
+
 ## Decision Trees
 
-## Random Forests
+### Simple Tree
+
+```{r}
+library(tree)
+set.seed(622)
+tree.fit <- tree(Loan_Status ~ ., data=loan)
+summary(tree.fit)
+```
+
+Not all variables are used.
+
+```{r}
+plot(tree.fit)
+text(tree.fit, cex=.75, pretty=0)
+```
+
+```{r}
+tree.pred <- predict(tree.fit,tree_testing,type="class")
+cm <- table(tree.pred, tree_testing$Loan_Status)
+cm
+sum(diag(cm)) / sum(cm)
+```
+
+### Other Representation
+
+Choose only 1 way to display the tree
+
+```{r}
+library(rpart)
+
+rpart.tree.fit <- rpart(Loan_Status ~ ., data=loan)
+plot(rpart.tree.fit, uniform=TRUE, branch=0.6, margin=0.05)
+text(rpart.tree.fit, all=TRUE, use.n=TRUE)
+```
+
+```{r fig.dim=c(16,8)}
+library(partykit)
+rparty.tree <- as.party(rpart.tree.fit)
+plot(rparty.tree)
+```
+
+### Cross Validated Tree
+
+```{r}
+set.seed(622)
+cv.dt <- cv.tree(tree.fit, FUN=prune.misclass)
+par(mfrow=c(1,2))
+plot(cv.dt$size ,cv.dt$dev ,type="b")
+plot(cv.dt$k , cv.dt$dev ,type="b")
+```
+
+Best pruned tree
+
+```{r}
+pruned.dt <- prune.misclass(tree.fit,best=2)
+plot(pruned.dt)
+text(pruned.dt,pretty=0)
+```
+
+Evaluation of pruned tree on test set.
+
+```{r}
+tree.pred <- predict(pruned.dt,tree_testing,type="class")
+cm <- table(tree.pred, tree_testing$Loan_Status)
+cm
+sum(diag(cm)) / sum(cm)
+```
+
+
+## Random Forest
+
+```{r}
+library(randomForest)
+rf.fit <- randomForest(Loan_Status ~ .,   data=loan)
+print(rf.fit) # view results
+importance(rf.fit) # importance of each predictor
+ varImpPlot(rf.fit)
+```
+
 
 ## Gradient Boosting
 
