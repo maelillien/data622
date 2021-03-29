@@ -222,16 +222,42 @@ loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/
 ```
 
 ```{r}
-skim(loan)
+head(loan)
 ```
-
-
 
 
 ## Data Exploration
 
+The loan dataset is composed 13 variables and 614 observations. Eight of the variables are factors and 5 are numeric. The dataset has a few missing values but is mostly complete and no variable has more than 10% missing data. Imputation of the missing values will be a step in the data processing. We also note that the Loan_ID variable is simply an index and holds no valuable information, making it safe for removal. The Credit_History variable is coded as numeric but it is a binary variable with two levels.
+
 ```{r}
-loan %>% select(is.factor)
+skim(loan)
+```
+
+```{r}
+loan <- loan %>% mutate(TotalIncome = ApplicantIncome + CoapplicantIncome)
+loan <- loan %>% select(-c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
+loan$Credit_History <- as.factor(loan$Credit_History)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>%  gather(key = "variable", value = "measurement", c('TotalIncome','LoanAmount','Loan_Amount_Term')) %>% 
+  ggplot(aes(Loan_Status, measurement)) + geom_boxplot(aes(fill=Loan_Status)) + 
+  facet_wrap(~variable, scales = "free") +
+  #scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Numeric Variable Boxplots")
+```
+
+
+```{r}
+loan %>%  gather(key = "variable", value = "measurement", c('Gender':'Self_Employed')) %>% 
+  ggplot(aes(measurement)) + geom_bar(aes(fill=Loan_Status), position=position_dodge()) + 
+  facet_wrap(~variable, scales = "free")
+  #scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Numeric Variable Boxplots")
 ```
 
 
