@@ -115,6 +115,8 @@ penguins %>%  gather(key = "variable", value = "measurement", bill_length_mm:bod
   ggtitle("Body Measurements Boxplot")
 ```
 
+The scatterplot matrix below is another way to visualize the separation and overlap between classes for different combination of variables. We see that in general, Gentoo penguins standalone as a separate group. However, Adelie and Chinstrap penguins overlap in the comparison of `bill_depth`, `flipper_length` and `body_mass`.
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 colors <- c("darkorange","purple","cyan4")[unclass(penguins$species)]
 pairs(penguins[,2:5], col=colors, oma=c(3,3,3,15))
@@ -162,20 +164,25 @@ corrplot(M, method="color", col=col(200),
 
 ## K-Nearest Neighbors
 
-The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the same scale. Here we use the `scale` argument to the `preProcess` parameter of the traning function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268. 
+The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the same scale. Here we pass the `scale` argument to the `preProcess` parameter of the training function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268 observations. 
 
-```{r}
+### Processing
+
+```{r message=FALSE, warning=FALSE}
+# Processing
 penguins_knn <- penguins
 penguins_knn$sex <- as.numeric(penguins_knn$sex)-1 # recode as 1 or 0
 
+# Data Partitioning
 set.seed(622)
 trainIndex <- createDataPartition(penguins_knn$species, p = .8, list = FALSE, times = 1)
-
-knn_training <- penguins_knn[ trainIndex,]
+knn_training <- penguins_knn[trainIndex,]
 knn_testing  <- penguins_knn[-trainIndex,]
 ```
 
-We performed 10-fold crossvalidation to determine the optimal parameter k for our model. 
+### Modeling
+
+We performed 10-fold cross-validation in the training data to determine the optimal parameter k for our model. The resulting accuracy for each value of k is displayed and plotted below. The maximum accuracy is reached with values of k=3 and k=4 but the training procedure automatically chose k=4 as the best model. We gain a full percentage point in cross-validation accuracy on the training data using the tuned model over models with slightly more or fewer neighbors. 
 
 ```{r}
 trControl <- trainControl(method  = "cv",
@@ -194,10 +201,13 @@ knn.fit <- train(species ~ .,
 knn.fit
 ```
 
-
-```{r}
+```{r echo=FALSE}
 plot(knn.fit)
 ```
+
+### Results
+
+The evaluation of the tuned K-NN model on the testing data reveals that the model was able to classify species with perfect accuracy. However, it is important to note that 100% prediction accuracy is typically rare and that this model benefitted from fairly clean class separations and limited overlap in the original dataset. 
 
 ```{r}
 knnPredict <- predict(knn.fit, newdata = knn_testing) 
