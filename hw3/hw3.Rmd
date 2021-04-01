@@ -217,6 +217,14 @@ confusionMatrix(knnPredict, knn_testing$species)
 
 # Loan Approval Dataset
 
+MI: ADD SOME INTRO ABOUT THE MODELS THAT WILL FOLLOW
+
+MI: ADD TO DESCRIPTION OF DATASET
+
+The loan dataset is composed of 13 variables and 614 observations. The target or dependent variable is `Loan_Status` and contains 'Y' or 'N' as entries. Predicting whether a long will be approved is a binary classification problem. 
+
+Eight of the variables are factors and 5 are numeric. The dataset contains missing values recorded either as 'NA' or simply empty. Some columns are missing nearly 10% of observations. Imputation of the missing values will be a step in the data pre-processing. We also note that the Loan_ID variable is simply an index and holds no valuable information, making it safe for removal. The Credit_History variable is coded as numeric but it is a binary variable with two levels.
+
 ```{r}
 loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
 ```
@@ -225,14 +233,22 @@ loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/
 head(loan)
 ```
 
-
-## Data Exploration
-
-The loan dataset is composed 13 variables and 614 observations. Eight of the variables are factors and 5 are numeric. The dataset has a few missing values but is mostly complete and no variable has more than 10% missing data. Imputation of the missing values will be a step in the data processing. We also note that the Loan_ID variable is simply an index and holds no valuable information, making it safe for removal. The Credit_History variable is coded as numeric but it is a binary variable with two levels.
-
-```{r}
+```{r message=TRUE, warning=FALSE}
+# replace blank values with NA to allow for proper calculation of the complete_rate column in the data summary
+loan[loan==''] <- NA 
 skim(loan)
 ```
+
+## Data Pre-processing
+
+The pre-processing steps are the following:
+
+- Creating a new variable called `TotalIncome` by summing applicant and coapplicant incomes. Typically loan issuers take into account the combined income of the applicant and guarantor.
+- Dropping the valueless variable `Loan_ID` and the individual income variables that were just combined. 
+- Treating `Credit_History` as a factor with 2 levels instead of a numeric variables
+- Imputation of missing values
+
+Note that the tree based methods employed in this exercise are not required to be coded as numeric or expanded as dummy variables. We can see from the data summary above that the remainder of the variables have the proper data type.
 
 ```{r}
 loan <- loan %>% mutate(TotalIncome = ApplicantIncome + CoapplicantIncome)
@@ -240,6 +256,24 @@ loan <- loan %>% select(-c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
 loan$Credit_History <- as.factor(loan$Credit_History)
 ```
 
+## Data Exploration
+
+By examining the target variables, we see that nearly 70% of all loans are approved.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(loan, aes(Loan_Status)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..)), fill=c('#F8766D','#00BFC4')) + 
+  scale_y_continuous(labels=scales::percent) +
+  theme_minimal() +
+  ggtitle("Target Variable Distribution") +
+  ylab("Relative Frequencies")
+```
+
+We can make a few observations from boxplots of the numeric variables below:
+
+- `Loan_Amount_Term` only take a few discrete values representing various durations. The most common value by far, as indicated by the flat box is around 360 meaning that the most common loan term is 1 year. This was fairly consistent across both outcomes of the dependent variable. 
+- `LoanAmount` does not greatly differ across the dependent variable. The interquartile range is slightly more compressed in the 'Y' category and there is a greater range of outliers values on the upper end of the range. The mean loan amounts were comparable for both outcomes. 
+- `TotalIncome` is fairly similar across the outcomes up to about $30,000 in total income. Interestingly, the observation with the highest total income recorded is the greatest outlier and was not issued a loan. Large skew is observed across both categories.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 loan %>%  gather(key = "variable", value = "measurement", c('TotalIncome','LoanAmount','Loan_Amount_Term')) %>% 
@@ -247,17 +281,25 @@ loan %>%  gather(key = "variable", value = "measurement", c('TotalIncome','LoanA
   facet_wrap(~variable, scales = "free") +
   #scale_fill_manual(values = c("darkorange","purple","cyan4")) +
   theme_minimal() +
-  ggtitle("Numeric Variable Boxplots")
+  ggtitle("Distribution of Numeric Variables")
 ```
 
+From the bar plots of the categorical variables shwon below, we observe the following:
 
-```{r}
-loan %>%  gather(key = "variable", value = "measurement", c('Gender':'Self_Employed')) %>% 
+- `Credit_History`: The majority of applicants had credit history; the large majority of which were approved for a loan. 
+- `Dependents`: Individuals with 0 dependents form the majority of the cohort. Individual with fewer dependents may be less risk adverse and more willing to take on debt.
+- `Education`: More individuals with graduate education applied for loans and a greater proportion of them received one in comparison to the "Not Graduate" counterparts.
+- `Gender`: More than 3 times more males applied for loans than females. Both genders seem to be granted loans in the same proportion.
+- `Married`: Married individuals applied for loans. This could be a consequence of needing to finance something like a home or a car which is more typical of married households.
+- `Property_Area`:  
+- `Self_Employed`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% select(where(is.factor)) %>%  gather(key = "variable", value = "measurement", -Loan_Status) %>% 
   ggplot(aes(measurement)) + geom_bar(aes(fill=Loan_Status), position=position_dodge()) + 
   facet_wrap(~variable, scales = "free")
-  #scale_fill_manual(values = c("darkorange","purple","cyan4")) +
   theme_minimal() +
-  ggtitle("Numeric Variable Boxplots")
+  ggtitle("Distribution of Categorical Variables")
 ```
 
 
