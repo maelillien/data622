@@ -291,19 +291,20 @@ From the bar plots of the categorical variables shwon below, we observe the foll
 - `Education`: More individuals with graduate education applied for loans and a greater proportion of them received one in comparison to the "Not Graduate" counterparts.
 - `Gender`: More than 3 times more males applied for loans than females. Both genders seem to be granted loans in the same proportion.
 - `Married`: Married individuals applied for loans. This could be a consequence of needing to finance something like a home or a car which is more typical of married households.
-- `Property_Area`:  
-- `Self_Employed`
+- `Property_Area`:  Inviduals living in semi-urban propety areas applied for the most number of loans but also had the greatest proportion of approved loans. Urban areas follow with with approximately 50% of approved load while rural areas has fewer applicants and a greater proportion of rejections.
+- `Self_Employed`: Individuals who were not self-employed made up the large majority of the observations. This makes sense given that in general salaried employees greatly outnumber self-employed employees. Additionally, a self-employed individual may have less consistent streams of revenue and therefore might be less willing to take on debt.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 loan %>% select(where(is.factor)) %>%  gather(key = "variable", value = "measurement", -Loan_Status) %>% 
   ggplot(aes(measurement)) + geom_bar(aes(fill=Loan_Status), position=position_dodge()) + 
-  facet_wrap(~variable, scales = "free")
+  facet_wrap(~variable, scales = "free") +
   theme_minimal() +
   ggtitle("Distribution of Categorical Variables")
 ```
 
-
 ## Data Processing
+
+MI: I BELIEVE THAT IT IS NOT NECESSARY TO ENCODE THE VARIABLES NUMERICALLY (ALSO OBSCURES INTERPRETATION OF THE TREE). THE PREPROCESSING STEP MIGHT BE ENOUGH
 
 ```{r}
 loan$Loan_Status <- as.factor(ifelse(loan$Loan_Status=='Y',1,0))
@@ -398,8 +399,11 @@ cm
 sum(diag(cm)) / sum(cm)
 ```
 
+MI: I'M OKAY TO USE THE RPART PACKAGE INSTEAD OF TREE. 
 
 ## Random Forest
+
+MI: @DC LET'S TRY EXPANDING THE RANDOM FOREST TO A GREATER NUMBER OF ntreeTry. I SEE 10,000 OFTEN. REDUCE IF COMPUTATION BECOMES TOO HEAVY
 
 ```{r}
 library(randomForest)
@@ -413,6 +417,8 @@ importance(rf.fit) # importance of each predictor
 ## Gradient Boosting
 
 ## Model Performance
+
+
 
 
 
