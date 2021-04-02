@@ -256,6 +256,8 @@ loan <- loan %>% select(-c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
 loan$Credit_History <- as.factor(loan$Credit_History)
 ```
 
+IMPUTATION
+
 ## Data Exploration
 
 By examining the target variables, we see that nearly 70% of all loans are approved.
@@ -286,7 +288,7 @@ loan %>%  gather(key = "variable", value = "measurement", c('TotalIncome','LoanA
 
 From the bar plots of the categorical variables shwon below, we observe the following:
 
-- `Credit_History`: The majority of applicants had credit history; the large majority of which were approved for a loan. 
+- `Credit_History`: The majority of applicants had credit history; the large majority of which were approved for a loan. This is likely to be one of the most important factor in determining who gets a loan.
 - `Dependents`: Individuals with 0 dependents form the majority of the cohort. Individual with fewer dependents may be less risk adverse and more willing to take on debt.
 - `Education`: More individuals with graduate education applied for loans and a greater proportion of them received one in comparison to the "Not Graduate" counterparts.
 - `Gender`: More than 3 times more males applied for loans than females. Both genders seem to be granted loans in the same proportion.
@@ -302,23 +304,59 @@ loan %>% select(where(is.factor)) %>%  gather(key = "variable", value = "measure
   ggtitle("Distribution of Categorical Variables")
 ```
 
+Interestingly, there is virtually no difference in the relationship between loan amount and total income across the credit history category as seen by the nearly collinear regression lines. We can also observe that individuals on the low end of the total income axis and below the regression line generally had credit history. These are individuals with larger incomes but requesting less sizable loans.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Credit_History)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_minimal() +
+  ggtitle("Loan Amount and Total Income Across Credit History")
+```
+
+The least squares lines across the dependent variable are also nearly collinear but the line representing individuals who received loans has a slightly greater slope suggesting that higher incomes unlock larger loans which is sensible and expected. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Loan_Status)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_minimal() +
+  ggtitle("Loan Amount and Total Income Across Loan Status")
+```
+
+```{r}
+library(gridExtra)
+p1 <- ggplot(data=loan, aes(x=TotalIncome, fill=Education)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p2 <- ggplot(data=loan, aes(x=TotalIncome, fill=Gender)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p3 <- ggplot(data=loan, aes(x=TotalIncome, fill=Self_Employed)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p4 <- ggplot(data=loan, aes(x=TotalIncome, fill=Credit_History)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p5 <- ggplot(data=loan, aes(x=TotalIncome, fill=Property_Area)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+grid.arrange(p1, p2, p3, p4, p5, ncol = 1)
+```
+
+
+
 ## Data Processing
 
 MI: I BELIEVE THAT IT IS NOT NECESSARY TO ENCODE THE VARIABLES NUMERICALLY (ALSO OBSCURES INTERPRETATION OF THE TREE). THE PREPROCESSING STEP MIGHT BE ENOUGH
 
 ```{r}
-loan$Loan_Status <- as.factor(ifelse(loan$Loan_Status=='Y',1,0))
-loan$Property_Area <- as.factor(loan$Property_Area)
-loan$Self_Employed <- as.factor(ifelse(loan$Self_Employed=='Yes',1,0))
-loan$Education <- as.factor(ifelse(loan$Education=='Graduate',1,0))
-loan$Married <- as.factor(ifelse(loan$Married=='Yes',1,0))
-loan$Gender<- as.factor(ifelse(loan$Gender=='Female',1,0))
-levels(loan$Dependents) <- c(levels((loan$Dependents)), "3")
-loan$Dependents[loan$Dependents == '3+'] <- '3'
-loan <- loan %>% mutate(totalIncome = ApplicantIncome + CoapplicantIncome)
-loan <- select(loan, -c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
-
-loan <- loan[complete.cases(loan), ]
+# loan$Loan_Status <- as.factor(ifelse(loan$Loan_Status=='Y',1,0))
+# loan$Property_Area <- as.factor(loan$Property_Area)
+# loan$Self_Employed <- as.factor(ifelse(loan$Self_Employed=='Yes',1,0))
+# loan$Education <- as.factor(ifelse(loan$Education=='Graduate',1,0))
+# loan$Married <- as.factor(ifelse(loan$Married=='Yes',1,0))
+# loan$Gender<- as.factor(ifelse(loan$Gender=='Female',1,0))
+# levels(loan$Dependents) <- c(levels((loan$Dependents)), "3")
+# loan$Dependents[loan$Dependents == '3+'] <- '3'
+# loan <- loan %>% mutate(totalIncome = ApplicantIncome + CoapplicantIncome)
+# loan <- select(loan, -c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
+# 
+# loan <- loan[complete.cases(loan), ]
 ```
 
 ```{r}
