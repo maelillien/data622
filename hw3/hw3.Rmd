@@ -27,6 +27,13 @@ library(tidyverse)
 library(caret) # For featureplot, classification report
 library(corrplot) # For correlation matrix
 library(AppliedPredictiveModeling)
+library(mice) # For data imputation
+library(VIM) # For missing data visualization
+library(gridExtra) # For grid plots
+library(rpart) # For Decision Trees models
+library(rpart.plot) # For Decision Tree Plots
+library(randomForest) # For Random Forest models
+library(randomForestExplainer) # For Random Forest Variable Importance Analysis
 ```
 
 # Penguins Dataset
@@ -170,7 +177,6 @@ The KNN algorithms requires minor data processing. Firstly, predictor values tha
 # Processing
 penguins_knn <- penguins
 penguins_knn$sex <- as.numeric(penguins_knn$sex)-1 # recode as 1 or 0
-
 # Data Partitioning
 set.seed(622)
 trainIndex <- createDataPartition(penguins_knn$species, p = .8, list = FALSE, times = 1)
@@ -185,7 +191,6 @@ We performed 10-fold cross-validation in the training data to determine the opti
 ```{r}
 trControl <- trainControl(method  = "cv",
                           number  = 10)
-
 knn.fit <- train(species ~ .,
              method     = "knn",
              tuneGrid   = expand.grid(k = 1:10),
@@ -209,19 +214,10 @@ The evaluation of the tuned K-NN model on the testing data reveals that the mode
 
 ```{r}
 knnPredict <- predict(knn.fit, newdata = knn_testing) 
-
 confusionMatrix(knnPredict, knn_testing$species)
 ```
 
 # Loan Approval Dataset
-
-```{r}
-library(mice) # For data imputation
-library(VIM) # For missing data visualization
-library(gridExtra) # For grid plots
-library(rpart) # For Decision Trees models
-library(randomForest) # For Random Forest models
-```
 
 A loan-issuance company with presence across urban, semi urban and rural areas wants to validate the eligibility of customers to be granted a loan. Using an online application form, customers enter a series of attributes such as Gender, Marital Status, Education, Number of Dependents, Income, Loan Amount, Credit History and others. To automate the eligibility process, multiple supervised classification approaches can be used. In our case, we explore tree-based methods starting from simple Decision Trees (DT). Ensemble methods such as Random Forests (RF) and Gradient Boosting (GB) are also used to improve on the classification accuracy of the simple DT.
 
@@ -231,11 +227,14 @@ Eight of the variables are factors and 5 are numeric. The dataset contains missi
 
 ```{r}
 loan_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
+loan_raw <- loan_raw %>% mutate_if(is.character, factor)
 loan <- loan_raw
+
 ```
 
 ```{r}
 head(loan)
+table(complete.cases(loan))
 ```
 
 ```{r message=TRUE, warning=FALSE}
@@ -279,6 +278,11 @@ meth[c('Dependents')] <- 'polyreg'
 meth[c('Loan_Status','TotalIncome','Property_Area','Education')] = ''
 imputed <- mice(loan, method=meth, predictorMatrix=predM, m=5, seed=500)
 loan <- complete(imputed)
+table(complete.cases(loan))
+```
+```{r}
+mice_plot <- aggr(loan, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(loan), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+meth
 ```
 
 
@@ -321,7 +325,7 @@ From the bar plots of the categorical variables shwon below, we observe the foll
 - `Self_Employed`: Individuals who were not self-employed made up the large majority of the observations. This makes sense given that in general salaried employees greatly outnumber self-employed employees. Additionally, a self-employed individual may have less consistent streams of revenue and therefore might be less willing to take on debt.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-loan %>% select(where(is.factor)) %>%  gather(key = "variable", value = "measurement", -Loan_Status) %>% 
+loan %>% dplyr::select(where(is.factor)) %>%  tidyr::gather(key = "variable", value = "measurement", -Loan_Status) %>% 
   ggplot(aes(measurement)) + geom_bar(aes(fill=Loan_Status), position=position_dodge()) + 
   facet_wrap(~variable, scales = "free") +
   theme_minimal() +
@@ -373,7 +377,6 @@ The data pre-processing section the structural form of the data. No additional p
 ```{r}
 set.seed(622)
 trainIndex <- createDataPartition(loan$Loan_Status, p = .7, list = FALSE, times = 1)
-
 training <- loan[ trainIndex,]
 testing  <- loan[-trainIndex,]
 ```
@@ -384,41 +387,136 @@ testing  <- loan[-trainIndex,]
 MI: Include basic description of method
 
 ### Simple Tree
+Grow decision tree using Information Gain split function.  
+Cost Complexity set to 0 to grow base line tree to later prune.  
+The CP is the amount by which splitting a given node improved the relative error, in other words, it is the minimum improvement in the overall model needed at each node to justify the split.
+```{r}
+loan_dt <- rpart(Loan_Status ~., data = training, method = "class",
+                 parms = list(split="information"), control = rpart.control(cp=0))
+loan_dt
 
+```
+Plot tree
+
+```{r, fig.height=10, fig.width=14}
+rpart.plot(loan_dt)
+
+```
+
+Predict loan_status on test set and calculate accuracy
+```{r}
+loan_dt_pred <- predict(loan_dt, testing, type = "class")
+loan_dt_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_pred)
+loan_dt_table
+acc_dt_base <-  sum(diag(loan_dt_table))/sum(loan_dt_table)
+acc_dt_base
+```
 ### Pruned Tree
+Find Cost Complexity value that has the lowest cross-validation error rate  
 
-### Cross-validated Tree
+*For practical reasons, we chose to find the cost complexity parameter where pruning the tree will result in atleast 2 splits 
+
+```{r}
+
+plotcp(loan_dt)
+
+
+#cost complexity parameter where number of splits is greater than 1 AND the cross-validation error is minimum
+
+#min_err <- loan_dt$cptable[which.min(loan_dt$cptable[,"xerror"]),"CP"]
+cost_complexity_dt <- data.frame(printcp(loan_dt))
+min_err <- (cost_complexity_dt %>% filter(nsplit > 1) %>% slice(which.min(xerror)))$CP
+min_err
+```
+
+Prune tree based on CP value that has lowest cross validation error rate
+
+```{r}
+loan_dt_prune <- prune(loan_dt, min_err)
+plotcp(loan_dt_prune)
+rpart.plot(loan_dt_prune)
+```
+
+Accuracy of pruned tree
+```{r}
+loan_dt_prune_pred <- predict(loan_dt_prune, testing, type = "class")
+loan_dt_prune_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_prune_pred)
+loan_dt_prune_table
+acc_dt_prune <-  sum(diag(loan_dt_prune_table))/sum(loan_dt_prune_table)
+acc_dt_prune
+
+```
+
+
 
 
 ## Random Forest
 
 MI: Include basic description of method
 
+ntree: # of trees  
+mtry: # of random variables for each tree (for classification, sqrt(p) where p is number of variables in x)  
+
+* Find optimal value of how max number of feature samples a given tree in the forest will use  
+* Use optimal value to build random forest  
+
+```{r}
+
+
+min_tree_var <- tuneRF(x = subset(training, select = -Loan_Status), y=training$Loan_Status, ntreeTry = 500)
+val_opt <- min_tree_var [,"mtry"][which.min(min_tree_var [,"OOBError"])]
+
+loan_rf <- randomForest(Loan_Status ~., data = training, importance = TRUE, ntree=500, mtry = val_opt)
+loan_rf
+
+```
+  
+  
+Out of Bag Error stabilizes at around 100 trees  
+```{r}
+plot(loan_rf, col = c("black", "red", "green"), lty = c(1, 1, 1), main = "Predicted Loan Error Rates")
+legend("right", c(OOB = "Out of Bag Error", "Denied", "Appoved"), col = c("black", "red", "green"), lty = c(1, 1, 1))
+```
+  
+Variable importance is a scale of a given variable's predictive power and is taken by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important"  
+  
+Below is a table of the predictor variables and their various importance factors
+```{r}
+
+var_imp <- measure_importance(loan_rf)
+var_imp[,1:7]
+```
+  
+Predictors from the bootstrapped sample set that will give the highest purity are selected first. 
+Credit History looks to be one of the most important predictors because:  
+* Is usually at the root on most sampled trees.  
+* Has the lowest average depth 
+* Most often chosen as a root  
+
+```{r}
+plot_min_depth_distribution(min_depth_distribution(loan_rf), mean_sample = "relevant_trees")
+plot_multi_way_importance(var_imp, size_measure = "times_a_root")
+```
+  
+Looking at the multi-way importance plot we see that Credit History:  
+* has the largest accuracy decrease if the variable is omitted from model  
+* It has the highest Gini decrease of all variables  
+```{r}
+plot_multi_way_importance(loan_rf, x_measure = "accuracy_decrease", y_measure = "gini_decrease")
+```
+Random Forest Accuracy
+```{r}
+loan_rf_pred <- predict(loan_rf, testing, type = "class")
+loan_rf_table <- table(Actual = testing$Loan_Status, Predicted = loan_rf_pred)
+loan_rf_table
+acc_rf <-  sum(diag(loan_rf_table))/sum(loan_rf_table)
+acc_rf
+
+
+```
+
 ## Gradient Boosting
 
 MI: Include basic description of method
 
 ## Model Performance
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
