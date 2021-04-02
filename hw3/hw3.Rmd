@@ -15,8 +15,6 @@ output:
     df_print: paged
 ---
 
-# KNN, Decision Trees, Random Forests and Gradient Boosting
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -164,7 +162,7 @@ corrplot(M, method="color", col=col(200),
 
 ## K-Nearest Neighbors
 
-The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the same scale. Here we pass the `scale` argument to the `preProcess` parameter of the training function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268 observations. 
+The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the scaled appropriately. Here we pass the `scale` argument to the `preProcess` parameter of the training function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268 observations. 
 
 ### Processing
 
@@ -217,16 +215,23 @@ confusionMatrix(knnPredict, knn_testing$species)
 
 # Loan Approval Dataset
 
-MI: ADD SOME INTRO ABOUT THE MODELS THAT WILL FOLLOW
+```{r}
+library(mice) # For data imputation
+library(VIM) # For missing data visualization
+library(gridExtra) # For grid plots
+library(rpart) # For Decision Trees models
+library(randomForest) # For Random Forest models
+```
 
-MI: ADD TO DESCRIPTION OF DATASET
+A loan-issuance company with presence across urban, semi urban and rural areas wants to validate the eligibility of customers to be granted a loan. Using an online application form, customers enter a series of attributes such as Gender, Marital Status, Education, Number of Dependents, Income, Loan Amount, Credit History and others. To automate the eligibility process, multiple supervised classification approaches can be used. In our case, we explore tree-based methods starting from simple Decision Trees (DT). Ensemble methods such as Random Forests (RF) and Gradient Boosting (GB) are also used to improve on the classification accuracy of the simple DT.
 
 The loan dataset is composed of 13 variables and 614 observations. The target or dependent variable is `Loan_Status` and contains 'Y' or 'N' as entries. Predicting whether a long will be approved is a binary classification problem. 
 
 Eight of the variables are factors and 5 are numeric. The dataset contains missing values recorded either as 'NA' or simply empty. Some columns are missing nearly 10% of observations. Imputation of the missing values will be a step in the data pre-processing. We also note that the Loan_ID variable is simply an index and holds no valuable information, making it safe for removal. The Credit_History variable is coded as numeric but it is a binary variable with two levels.
 
 ```{r}
-loan <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
+loan_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
+loan <- loan_raw
 ```
 
 ```{r}
@@ -256,7 +261,26 @@ loan <- loan %>% select(-c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
 loan$Credit_History <- as.factor(loan$Credit_History)
 ```
 
-IMPUTATION
+#### Imputation of Missing Values
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mice_plot <- aggr(loan, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(loan), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# pmm for numerical variables, logreg for binary factor variables and polyreg for multilevel factor variables
+init <- mice(loan, maxit=0) 
+meth <- init$method
+predM <- init$predictorMatrix
+meth[c('LoanAmount', 'Loan_Amount_Term')] <- 'pmm'
+meth[c('Credit_History','Self_Employed','Gender','Married')] <- 'logreg'
+meth[c('Dependents')] <- 'polyreg'
+meth[c('Loan_Status','TotalIncome','Property_Area','Education')] = ''
+imputed <- mice(loan, method=meth, predictorMatrix=predM, m=5, seed=500)
+loan <- complete(imputed)
+```
+
 
 ## Data Exploration
 
@@ -328,133 +352,62 @@ loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Loan_Status)) +
   ggtitle("Loan Amount and Total Income Across Loan Status")
 ```
 
-```{r}
-library(gridExtra)
+Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. Total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. 
+
+MI: ADD MORE DESCRIPTION
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,10)}
 p1 <- ggplot(data=loan, aes(x=TotalIncome, fill=Education)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
 p2 <- ggplot(data=loan, aes(x=TotalIncome, fill=Gender)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
 p3 <- ggplot(data=loan, aes(x=TotalIncome, fill=Self_Employed)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
 p4 <- ggplot(data=loan, aes(x=TotalIncome, fill=Credit_History)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
 p5 <- ggplot(data=loan, aes(x=TotalIncome, fill=Property_Area)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
-grid.arrange(p1, p2, p3, p4, p5, ncol = 1)
+p6 <- ggplot(data=loan, aes(x=TotalIncome, fill=Dependents)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 2)
 ```
-
-
 
 ## Data Processing
 
-MI: I BELIEVE THAT IT IS NOT NECESSARY TO ENCODE THE VARIABLES NUMERICALLY (ALSO OBSCURES INTERPRETATION OF THE TREE). THE PREPROCESSING STEP MIGHT BE ENOUGH
+The data pre-processing section the structural form of the data. No additional processing is required for tree-based methods. We partition our data into training and testing sets in a 70%/30% proportion.
 
 ```{r}
-# loan$Loan_Status <- as.factor(ifelse(loan$Loan_Status=='Y',1,0))
-# loan$Property_Area <- as.factor(loan$Property_Area)
-# loan$Self_Employed <- as.factor(ifelse(loan$Self_Employed=='Yes',1,0))
-# loan$Education <- as.factor(ifelse(loan$Education=='Graduate',1,0))
-# loan$Married <- as.factor(ifelse(loan$Married=='Yes',1,0))
-# loan$Gender<- as.factor(ifelse(loan$Gender=='Female',1,0))
-# levels(loan$Dependents) <- c(levels((loan$Dependents)), "3")
-# loan$Dependents[loan$Dependents == '3+'] <- '3'
-# loan <- loan %>% mutate(totalIncome = ApplicantIncome + CoapplicantIncome)
-# loan <- select(loan, -c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
-# 
-# loan <- loan[complete.cases(loan), ]
-```
-
-```{r}
+set.seed(622)
 trainIndex <- createDataPartition(loan$Loan_Status, p = .7, list = FALSE, times = 1)
 
-tree_training <- loan[ trainIndex,]
-tree_testing  <- loan[-trainIndex,]
+training <- loan[ trainIndex,]
+testing  <- loan[-trainIndex,]
 ```
 
 
 ## Decision Trees
 
+MI: Include basic description of method
+
 ### Simple Tree
 
-```{r}
-library(tree)
-set.seed(622)
-tree.fit <- tree(Loan_Status ~ ., data=loan)
-summary(tree.fit)
-```
+### Pruned Tree
 
-Not all variables are used.
+### Cross-validated Tree
 
-```{r}
-plot(tree.fit)
-text(tree.fit, cex=.75, pretty=0)
-```
-
-```{r}
-tree.pred <- predict(tree.fit,tree_testing,type="class")
-cm <- table(tree.pred, tree_testing$Loan_Status)
-cm
-sum(diag(cm)) / sum(cm)
-```
-
-### Other Representation
-
-Choose only 1 way to display the tree
-
-```{r}
-library(rpart)
-
-rpart.tree.fit <- rpart(Loan_Status ~ ., data=loan)
-plot(rpart.tree.fit, uniform=TRUE, branch=0.6, margin=0.05)
-text(rpart.tree.fit, all=TRUE, use.n=TRUE)
-```
-
-```{r fig.dim=c(16,8)}
-library(partykit)
-rparty.tree <- as.party(rpart.tree.fit)
-plot(rparty.tree)
-```
-
-### Cross Validated Tree
-
-```{r}
-set.seed(622)
-cv.dt <- cv.tree(tree.fit, FUN=prune.misclass)
-par(mfrow=c(1,2))
-plot(cv.dt$size ,cv.dt$dev ,type="b")
-plot(cv.dt$k , cv.dt$dev ,type="b")
-```
-
-Best pruned tree
-
-```{r}
-pruned.dt <- prune.misclass(tree.fit,best=2)
-plot(pruned.dt)
-text(pruned.dt,pretty=0)
-```
-
-Evaluation of pruned tree on test set.
-
-```{r}
-tree.pred <- predict(pruned.dt,tree_testing,type="class")
-cm <- table(tree.pred, tree_testing$Loan_Status)
-cm
-sum(diag(cm)) / sum(cm)
-```
-
-MI: I'M OKAY TO USE THE RPART PACKAGE INSTEAD OF TREE. 
 
 ## Random Forest
 
-MI: @DC LET'S TRY EXPANDING THE RANDOM FOREST TO A GREATER NUMBER OF ntreeTry. I SEE 10,000 OFTEN. REDUCE IF COMPUTATION BECOMES TOO HEAVY
-
-```{r}
-library(randomForest)
-rf.fit <- randomForest(Loan_Status ~ .,   data=loan)
-print(rf.fit) # view results
-importance(rf.fit) # importance of each predictor
- varImpPlot(rf.fit)
-```
-
+MI: Include basic description of method
 
 ## Gradient Boosting
 
+MI: Include basic description of method
+
 ## Model Performance
+
+
+
+
+
+
+
+
+
 
 
 
