@@ -1,0 +1,522 @@
+---
+title: "DATA 622 HW3 - Classification using KNN, Decision Trees, Random Forests and Gradient Boosting"
+author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
+date: "3/19/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(caret) # For featureplot, classification report
+library(corrplot) # For correlation matrix
+library(AppliedPredictiveModeling)
+library(mice) # For data imputation
+library(VIM) # For missing data visualization
+library(gridExtra) # For grid plots
+library(rpart) # For Decision Trees models
+library(rpart.plot) # For Decision Tree Plots
+library(randomForest) # For Random Forest models
+library(randomForestExplainer) # For Random Forest Variable Importance Analysis
+```
+
+# Penguins Dataset
+
+## Data Exploration
+
+The penguin dataset is composed of 344 observations with 8 variables, 5 of which are numeric and 3 which are qualitative. The dataset is mostly complete with just a few observations with missing values that will need to be handled. 
+
+```{r echo=FALSE}
+penguins <- palmerpenguins::penguins
+skim(penguins)
+```
+
+```{r echo=FALSE}
+penguins
+```
+
+The target variable of interest is the species of penguins, which are categorized into three groups: Adelie, Gentoo and Chinstrap penguins.
+
+```{r echo=FALSE}
+unique(penguins$species)
+```
+
+### Species Distribution on Islands
+
+From this plot, we can make a few key observations: 
+
+- Gentoo penguins are only found on Biscoe Island
+- Chinstrap pengiuns only found on Dream Island
+- Adelie penguins are found on all three islands
+- Torgersen Island only has Adelie penguins
+
+These island observations are valuable information in differentiating penguin species.
+
+```{r echo=FALSE}
+ggplot(penguins, aes(x = island, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip() +
+  ggtitle("Species Distribution by Island")
+```
+
+### Sex Distribution
+
+However, the sex of the penguins does not offer much information as the proportion is about even across all species. We can also note a few missing observations labeled as NA. 
+
+```{r echo=FALSE}
+ggplot(penguins, aes(x = sex, fill = species)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_manual(values = c("darkorange","purple","cyan4"),
+                    guide = FALSE) +
+  theme_minimal() +
+  facet_wrap(~species, ncol = 1) +
+  coord_flip() +
+  ggtitle("Sex Distribution by Species")
+```
+
+### Missing Values & Variable Selection
+
+We noted from the data summary above that 11 observations were missing for the `sex` variable. There is also no reason to believe that the `year` the observation was taken would have any impact on the morphology of the penguins. We are not looking for any time series modeling. Therefore, we also drop `year` from our predictor variables. There are also two observations which are missing body measurements altogether, so these rows will be dropped altogether.
+
+```{r}
+penguins[!complete.cases(penguins), ]
+```
+
+```{r}
+penguins <- penguins[complete.cases(penguins), ]
+penguins <- dplyr::select(penguins, -c(year, island))
+```
+
+### Body Measurements
+
+When looking at body measurements we see that Adelie and Chinstrap penguins largely overlap except for `bill_length`. This suggests that we might be able to use `bill_depth`, `body_mass` and `flipper_length` to differentiate the Gentoo penguins from the other species. However, the Adelie penguin stands out from the other others in `bill_length`
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+penguins %>%  gather(key = "variable", value = "measurement", bill_length_mm:body_mass_g) %>% 
+  ggplot(aes(species, measurement)) + geom_boxplot(aes(fill=species)) + 
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Body Measurements Boxplot")
+```
+
+The scatterplot matrix below is another way to visualize the separation and overlap between classes for different combination of variables. We see that in general, Gentoo penguins standalone as a separate group. However, Adelie and Chinstrap penguins overlap in the comparison of `bill_depth`, `flipper_length` and `body_mass`.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+colors <- c("darkorange","purple","cyan4")[unclass(penguins$species)]
+pairs(penguins[,2:5], col=colors, oma=c(3,3,3,15))
+legend("bottomright", fill = unique(penguins$species), legend = c(levels(penguins$species)))
+```
+
+We see on the univariate feature plots below that the data is aproximatelly normally distributed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,6)}
+transparentTheme(trans = .9)
+featurePlot(x = penguins[, 2:5], 
+            y = penguins$species, 
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(4, 1), 
+            auto.key = list(columns = 3))
+```
+
+### Multicollinearity
+
+Taking a look at the correlation matrix below, we can make a few observations, notably that `flipper_length` is highly positively correlated with `body_mass` which makes sense given that larger penguins should have larger flippers. The other correlations are less obvious to interpret. Given that the dataset only contains a few predictors, we choose not to exclude any variables based on multicollinearity at this time.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+M <-cor(penguins[, 2:5])
+p.mat <- cor.mtest(penguins[, 2:5])
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat$p, sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         ) 
+```
+
+## K-Nearest Neighbors
+
+The KNN algorithms requires minor data processing. Firstly, predictor values that are factors should be conversted to numeric. Secondly, because KNN uses distance between points to determine their classification, it is important for the points to be on the scaled appropriately. Here we pass the `scale` argument to the `preProcess` parameter of the training function to standardize each variable. The data is then split into training and testing sets 80%/20%. The test set contains 65 observations and the train set 268 observations. 
+
+### Processing
+
+```{r message=FALSE, warning=FALSE}
+# Processing
+penguins_knn <- penguins
+penguins_knn$sex <- as.numeric(penguins_knn$sex)-1 # recode as 1 or 0
+# Data Partitioning
+set.seed(622)
+trainIndex <- createDataPartition(penguins_knn$species, p = .8, list = FALSE, times = 1)
+knn_training <- penguins_knn[trainIndex,]
+knn_testing  <- penguins_knn[-trainIndex,]
+```
+
+### Modeling
+
+We performed 10-fold cross-validation in the training data to determine the optimal parameter k for our model. The resulting accuracy for each value of k is displayed and plotted below. The maximum accuracy is reached with values of k=3 and k=4 but the training procedure automatically chose k=4 as the best model. We gain a full percentage point in cross-validation accuracy on the training data using the tuned model over models with slightly more or fewer neighbors. 
+
+```{r}
+trControl <- trainControl(method  = "cv",
+                          number  = 10)
+knn.fit <- train(species ~ .,
+             method     = "knn",
+             tuneGrid   = expand.grid(k = 1:10),
+             trControl  = trControl,
+             preProcess = c("center","scale"),
+             metric     = "Accuracy",
+             data       = knn_training)
+```
+
+```{r}
+knn.fit
+```
+
+```{r echo=FALSE}
+plot(knn.fit)
+```
+
+### Results
+
+The evaluation of the tuned K-NN model on the testing data reveals that the model was able to classify species with perfect accuracy. However, it is important to note that 100% prediction accuracy is typically rare and that this model benefitted from fairly clean class separations and limited overlap in the original dataset. 
+
+```{r}
+knnPredict <- predict(knn.fit, newdata = knn_testing) 
+confusionMatrix(knnPredict, knn_testing$species)
+```
+
+# Loan Approval Dataset
+
+A loan-issuance company with presence across urban, semi urban and rural areas wants to validate the eligibility of customers to be granted a loan. Using an online application form, customers enter a series of attributes such as Gender, Marital Status, Education, Number of Dependents, Income, Loan Amount, Credit History and others. To automate the eligibility process, multiple supervised classification approaches can be used. In our case, we explore tree-based methods starting from simple Decision Trees (DT). Ensemble methods such as Random Forests (RF) and Gradient Boosting (GB) are also used to improve on the classification accuracy of the simple DT.
+
+The loan dataset is composed of 13 variables and 614 observations. The target or dependent variable is `Loan_Status` and contains 'Y' or 'N' as entries. Predicting whether a long will be approved is a binary classification problem. 
+
+Eight of the variables are factors and 5 are numeric. The dataset contains missing values recorded either as 'NA' or simply empty. Some columns are missing nearly 10% of observations. Imputation of the missing values will be a step in the data pre-processing. We also note that the Loan_ID variable is simply an index and holds no valuable information, making it safe for removal. The Credit_History variable is coded as numeric but it is a binary variable with two levels.
+
+```{r}
+loan_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw3/Loan_approval.csv', header = TRUE)
+loan_raw <- loan_raw %>% mutate_if(is.character, factor)
+loan <- loan_raw
+
+```
+
+```{r}
+head(loan)
+table(complete.cases(loan))
+```
+
+```{r message=TRUE, warning=FALSE}
+# replace blank values with NA to allow for proper calculation of the complete_rate column in the data summary
+loan[loan==''] <- NA 
+skim(loan)
+```
+
+## Data Pre-processing
+
+The pre-processing steps are the following:
+
+- Creating a new variable called `TotalIncome` by summing applicant and coapplicant incomes. Typically loan issuers take into account the combined income of the applicant and guarantor.
+- Dropping the valueless variable `Loan_ID` and the individual income variables that were just combined. 
+- Treating `Credit_History` as a factor with 2 levels instead of a numeric variables
+- Imputation of missing values
+
+Note that the tree based methods employed in this exercise are not required to be coded as numeric or expanded as dummy variables. We can see from the data summary above that the remainder of the variables have the proper data type.
+
+```{r}
+loan <- loan %>% mutate(TotalIncome = ApplicantIncome + CoapplicantIncome)
+loan <- loan %>% select(-c('Loan_ID','ApplicantIncome','CoapplicantIncome'))
+loan$Credit_History <- as.factor(loan$Credit_History)
+```
+
+#### Imputation of Missing Values
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+mice_plot <- aggr(loan, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(loan), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# pmm for numerical variables, logreg for binary factor variables and polyreg for multilevel factor variables
+init <- mice(loan, maxit=0) 
+meth <- init$method
+predM <- init$predictorMatrix
+meth[c('LoanAmount', 'Loan_Amount_Term')] <- 'pmm'
+meth[c('Credit_History','Self_Employed','Gender','Married')] <- 'logreg'
+meth[c('Dependents')] <- 'polyreg'
+meth[c('Loan_Status','TotalIncome','Property_Area','Education')] = ''
+imputed <- mice(loan, method=meth, predictorMatrix=predM, m=5, seed=500)
+loan <- complete(imputed)
+table(complete.cases(loan))
+```
+```{r}
+mice_plot <- aggr(loan, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(loan), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+meth
+```
+
+
+## Data Exploration
+
+By examining the target variables, we see that nearly 70% of all loans are approved.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(loan, aes(Loan_Status)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..)), fill=c('#F8766D','#00BFC4')) + 
+  scale_y_continuous(labels=scales::percent) +
+  theme_minimal() +
+  ggtitle("Target Variable Distribution") +
+  ylab("Relative Frequencies")
+```
+
+We can make a few observations from boxplots of the numeric variables below:
+
+- `Loan_Amount_Term` only take a few discrete values representing various durations. The most common value by far, as indicated by the flat box is around 360 meaning that the most common loan term is 1 year. This was fairly consistent across both outcomes of the dependent variable. 
+- `LoanAmount` does not greatly differ across the dependent variable. The interquartile range is slightly more compressed in the 'Y' category and there is a greater range of outliers values on the upper end of the range. The mean loan amounts were comparable for both outcomes. 
+- `TotalIncome` is fairly similar across the outcomes up to about $30,000 in total income. Interestingly, the observation with the highest total income recorded is the greatest outlier and was not issued a loan. Large skew is observed across both categories.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>%  gather(key = "variable", value = "measurement", c('TotalIncome','LoanAmount','Loan_Amount_Term')) %>% 
+  ggplot(aes(Loan_Status, measurement)) + geom_boxplot(aes(fill=Loan_Status)) + 
+  facet_wrap(~variable, scales = "free") +
+  #scale_fill_manual(values = c("darkorange","purple","cyan4")) +
+  theme_minimal() +
+  ggtitle("Distribution of Numeric Variables")
+```
+
+From the bar plots of the categorical variables shwon below, we observe the following:
+
+- `Credit_History`: The majority of applicants had credit history; the large majority of which were approved for a loan. This is likely to be one of the most important factor in determining who gets a loan.
+- `Dependents`: Individuals with 0 dependents form the majority of the cohort. Individual with fewer dependents may be less risk adverse and more willing to take on debt.
+- `Education`: More individuals with graduate education applied for loans and a greater proportion of them received one in comparison to the "Not Graduate" counterparts.
+- `Gender`: More than 3 times more males applied for loans than females. Both genders seem to be granted loans in the same proportion.
+- `Married`: Married individuals applied for loans. This could be a consequence of needing to finance something like a home or a car which is more typical of married households.
+- `Property_Area`:  Inviduals living in semi-urban propety areas applied for the most number of loans but also had the greatest proportion of approved loans. Urban areas follow with with approximately 50% of approved load while rural areas has fewer applicants and a greater proportion of rejections.
+- `Self_Employed`: Individuals who were not self-employed made up the large majority of the observations. This makes sense given that in general salaried employees greatly outnumber self-employed employees. Additionally, a self-employed individual may have less consistent streams of revenue and therefore might be less willing to take on debt.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% dplyr::select(where(is.factor)) %>%  tidyr::gather(key = "variable", value = "measurement", -Loan_Status) %>% 
+  ggplot(aes(measurement)) + geom_bar(aes(fill=Loan_Status), position=position_dodge()) + 
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal() +
+  ggtitle("Distribution of Categorical Variables")
+```
+
+Interestingly, there is virtually no difference in the relationship between loan amount and total income across the credit history category as seen by the nearly collinear regression lines. We can also observe that individuals on the low end of the total income axis and below the regression line generally had credit history. These are individuals with larger incomes but requesting less sizable loans.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Credit_History)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_minimal() +
+  ggtitle("Loan Amount and Total Income Across Credit History")
+```
+
+The least squares lines across the dependent variable are also nearly collinear but the line representing individuals who received loans has a slightly greater slope suggesting that higher incomes unlock larger loans which is sensible and expected. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Loan_Status)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_minimal() +
+  ggtitle("Loan Amount and Total Income Across Loan Status")
+```
+
+Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. Total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. 
+
+MI: ADD MORE DESCRIPTION
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,10)}
+p1 <- ggplot(data=loan, aes(x=TotalIncome, fill=Education)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p2 <- ggplot(data=loan, aes(x=TotalIncome, fill=Gender)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p3 <- ggplot(data=loan, aes(x=TotalIncome, fill=Self_Employed)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p4 <- ggplot(data=loan, aes(x=TotalIncome, fill=Credit_History)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p5 <- ggplot(data=loan, aes(x=TotalIncome, fill=Property_Area)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+p6 <- ggplot(data=loan, aes(x=TotalIncome, fill=Dependents)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 2)
+```
+
+## Data Processing
+
+The data pre-processing section the structural form of the data. No additional processing is required for tree-based methods. We partition our data into training and testing sets in a 70%/30% proportion.
+
+```{r}
+set.seed(622)
+trainIndex <- createDataPartition(loan$Loan_Status, p = .7, list = FALSE, times = 1)
+training <- loan[ trainIndex,]
+testing  <- loan[-trainIndex,]
+```
+
+
+## Decision Trees
+
+MI: Include basic description of method
+
+### Simple Tree
+Grow decision tree using Information Gain split function.  
+Cost Complexity set to 0 to grow base line tree to later prune.  
+The CP is the amount by which splitting a given node improved the relative error, in other words, it is the minimum improvement in the overall model needed at each node to justify the split.
+```{r}
+loan_dt <- rpart(Loan_Status ~., data = training, method = "class",
+                 parms = list(split="information"), control = rpart.control(cp=0))
+loan_dt
+
+```
+Plot tree
+
+```{r, fig.height=10, fig.width=14}
+rpart.plot(loan_dt)
+
+```
+
+Predict loan_status on test set and calculate accuracy
+```{r}
+loan_dt_pred <- predict(loan_dt, testing, type = "class")
+loan_dt_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_pred)
+loan_dt_table
+acc_dt_base <-  sum(diag(loan_dt_table))/sum(loan_dt_table)
+acc_dt_base
+```
+### Pruned Tree
+Find Cost Complexity value that has the lowest cross-validation error rate  
+
+*For practical reasons, we chose to find the cost complexity parameter where pruning the tree will result in atleast 2 splits 
+
+```{r}
+
+plotcp(loan_dt)
+
+
+#cost complexity parameter where number of splits is greater than 1 AND the cross-validation error is minimum
+
+#min_err <- loan_dt$cptable[which.min(loan_dt$cptable[,"xerror"]),"CP"]
+cost_complexity_dt <- data.frame(printcp(loan_dt))
+min_err <- (cost_complexity_dt %>% filter(nsplit > 1) %>% slice(which.min(xerror)))$CP
+min_err
+```
+
+Prune tree based on CP value that has lowest cross validation error rate
+
+```{r}
+loan_dt_prune <- prune(loan_dt, min_err)
+plotcp(loan_dt_prune)
+rpart.plot(loan_dt_prune)
+```
+
+Accuracy of pruned tree
+```{r}
+loan_dt_prune_pred <- predict(loan_dt_prune, testing, type = "class")
+loan_dt_prune_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_prune_pred)
+loan_dt_prune_table
+acc_dt_prune <-  sum(diag(loan_dt_prune_table))/sum(loan_dt_prune_table)
+acc_dt_prune
+
+```
+
+
+
+
+## Random Forest
+
+MI: Include basic description of method
+
+ntree: # of trees  
+mtry: # of random variables for each tree (for classification, sqrt(p) where p is number of variables in x)  
+
+* Find optimal value of how max number of feature samples a given tree in the forest will use  
+* Use optimal value to build random forest  
+
+```{r}
+
+
+min_tree_var <- tuneRF(x = subset(training, select = -Loan_Status), y=training$Loan_Status, ntreeTry = 500)
+val_opt <- min_tree_var [,"mtry"][which.min(min_tree_var [,"OOBError"])]
+
+loan_rf <- randomForest(Loan_Status ~., data = training, importance = TRUE, ntree=500, mtry = val_opt)
+loan_rf
+
+```
+  
+  
+Out of Bag Error stabilizes at around 100 trees  
+```{r}
+plot(loan_rf, col = c("black", "red", "green"), lty = c(1, 1, 1), main = "Predicted Loan Error Rates")
+legend("right", c(OOB = "Out of Bag Error", "Denied", "Appoved"), col = c("black", "red", "green"), lty = c(1, 1, 1))
+```
+  
+Variable importance is a scale of a given variable's predictive power and is taken by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important"  
+  
+Below is a table of the predictor variables and their various importance factors
+```{r}
+
+var_imp <- measure_importance(loan_rf)
+var_imp[,1:7]
+```
+  
+Predictors from the bootstrapped sample set that will give the highest purity are selected first. 
+Credit History looks to be one of the most important predictors because:  
+* Is usually at the root on most sampled trees.  
+* Has the lowest average depth 
+* Most often chosen as a root  
+
+```{r}
+plot_min_depth_distribution(min_depth_distribution(loan_rf), mean_sample = "relevant_trees")
+plot_multi_way_importance(var_imp, size_measure = "times_a_root")
+```
+  
+Looking at the multi-way importance plot we see that Credit History:  
+* has the largest accuracy decrease if the variable is omitted from model  
+* It has the highest Gini decrease of all variables  
+```{r}
+plot_multi_way_importance(loan_rf, x_measure = "accuracy_decrease", y_measure = "gini_decrease")
+```
+Random Forest Accuracy
+```{r}
+loan_rf_pred <- predict(loan_rf, testing, type = "class")
+loan_rf_table <- table(Actual = testing$Loan_Status, Predicted = loan_rf_pred)
+loan_rf_table
+acc_rf <-  sum(diag(loan_rf_table))/sum(loan_rf_table)
+acc_rf
+
+
+```
+
+## Gradient Boosting
+
+MI: Include basic description of method
+
+## Model Performance
