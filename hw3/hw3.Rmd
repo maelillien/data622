@@ -271,9 +271,9 @@ mice_plot <- aggr(loan, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE,
 
 Given the assumption that this dataset has Missing At Random Values, we can use the MICE (Multivariate Imputation via Chained Equations) package to impute the missing values throughout the dataset. For each type of predictor variable we will use:  
   
-* Numeric Variables: Predictive Mean Matching (ppm)  
-* Binary Variables: Logistic Regression (logreg)  
-* Factor Variables (3+ levels): Bayesian Polytomous Regression (polyreg)  
+* `Numeric Variables`: Predictive Mean Matching (ppm)  
+* `Binary Variables`: Logistic Regression (logreg)  
+* `Factor Variables (3+ levels)`: Bayesian Polytomous Regression (polyreg)  
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 # pmm for numerical variables, logreg for binary factor variables and polyreg for multilevel factor variables
@@ -288,7 +288,7 @@ imputed <- mice(loan, method=meth, predictorMatrix=predM, m=5, seed=500)
 loan <- complete(imputed)
 ```
 
-Below, we confirm that the imputing procedure was succesful and that the dataset no longer contains missing values.
+Below, we confirm that the imputing procedure was successful and that the dataset no longer contains missing values.
 
 ```{r}
 table(complete.cases(loan))
@@ -404,7 +404,6 @@ After growing a complete simple tree, we will need to decide if it requires prun
 loan_dt <- rpart(Loan_Status ~., data = training, method = "class",
                  parms = list(split="information"), control = rpart.control(cp=0))
 loan_dt
-
 ```
 The tree fitted on the training data is displayed below. The simple baseline tree is 8 levels deep. Each node shows the predicted class, the probability of that class and the percentage of observations that fall into the given node. By studying the splits, we see that after rejecting an applicant based on the lack of credit history, the applicant has a 81% percent of being approved regardless of all the other variables. Factoring in `TotalIncome` which is an important feature of any loan application, only increased the percentage of approval by 1% to 82%. Further splitting by Loan Amount and Property Area only increased accuracy by 1% for each step.
 
@@ -436,17 +435,12 @@ From the below we see that the error rate is minimized when the tree is only at 
 
 ```{r}
 plotcp(loan_dt)
-
-#cost complexity parameter where number of splits is greater than 1 AND the cross-validation error is minimum
-
-#min_err <- loan_dt$cptable[which.min(loan_dt$cptable[,"xerror"]),"CP"]
 cost_complexity_dt <- data.frame(printcp(loan_dt))
 min_err <- (cost_complexity_dt %>% filter(nsplit > 1) %>% slice(which.min(xerror)))$CP
-
 cat("Minimum Error: ", min_err)
 ```
 
-Prune tree based on CP value that has lowest cross validation error rate with atleaset 2 splits. The resulting tree is 3 levels levels and the most significant predictors are Credit History and Total Income
+We prune tree based on CP value that has lowest cross validation error rate with atleaset 2 splits. The resulting tree is 3 levels levels and the most significant predictors are `Credit History` and `Total Income`
 
 ```{r}
 loan_dt_prune <- prune(loan_dt, min_err)
@@ -474,38 +468,37 @@ The Random Forest model is similar to Decision Tree model in terms of how it con
 
 To build an optimal forest there are 2 parameters that we can tune:  
   
-* ntree: the number of trees in the forest
-* mtry: the number of of random variables for each tree 
+* `ntree`: the number of trees in the forest
+* `mtry`: the number of of random variables for each tree 
 
-For classification datasets, the generally recommended subset of variables recommended is the squareroot of the total number of predictor variables. In our dataset this is this is 3, since we have 10 total predictor variables
+For classification datasets, the generally recommended subset of variables is the square root of the total number of predictor variables. In our dataset this is this is 3, since we have 10 total predictor variables
 
 Form the results below we see that 2 random variables per tree in the forest generates the lowest Out of Bag error. In quick summary, when using bootstrapped samples, about a third of the observations do not end up getting used in construction of the trees, and the model's prediction on these new (to the model) observations is the Out of Bag Error
 
-Therefore we will set the mtry parameter to the number of variables that generate the lowest Out of Bag error rate
+Therefore we will set the `mtry` parameter to the number of variables that generate the lowest Out of Bag error rate
 
 ```{r}
 min_tree_var <- tuneRF(x = subset(training, select = -Loan_Status), y=training$Loan_Status, ntreeTry = 500)
 val_opt <- min_tree_var [,"mtry"][which.min(min_tree_var [,"OOBError"])]
-
 loan_rf <- randomForest(Loan_Status ~., data = training, importance = TRUE, ntree=500, mtry = val_opt)
 loan_rf
 ```
   
   
-Next we want to see if we have generated enough trees so that the Out Of Bag (OOB Error) error rates are minimum. From the below we see that the  OOB error rate is decreasing with 1-20 trees, and rate stabilizes that at around 100 trees. Therefore for this dataset 500 trees is more than enough to minimize the OOB Error rate
+Next we want to see if we have generated enough trees within the forest so that the Out Of Bag (OOB Error) error rates are minimum. From the below we see that the  OOB error rate is decreasing with 1-20 trees, and rate stabilizes that at around 100 trees. Therefore for this dataset 500 trees is more than enough to minimize the OOB Error rate
 
 ```{r}
 plot(loan_rf, col = c("black", "red", "green"), lty = c(1, 1, 1), main = "Predicted Loan Error Rates")
 legend("right", c(OOB = "Out of Bag Error", "Denied", "Appoved"), col = c("black", "red", "green"), lty = c(1, 1, 1))
 ```
   
-An area of interest like Decision Trees is Variable importance, which is a scale of a given variable's predictive power and is taken by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important"  
+An area of interest like Decision Trees is Variable Importance, which is a scale of a given variable's predictive power and is taken by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important"  
   
 Below is a table of the predictor variables and their various importance factors. Some definitions to help understand the below table:  
   
-* Accuracy Decrease: the decrease in accuracy of the overall model if a given predictor is not used in the model  
-* Gini Decrease: For each split that is made using a given predictor there is a reduction in the Gini Index. The Gene Decrease is an average of this Gini Index reduction across the entire forest   
-* Mean_min_depth: The depth in a tree that a give node occurred in  
+* `Accuracy Decrease`: the decrease in accuracy of the overall model if a given predictor is not used in the model  
+* `Gini Decrease`: For each split that is made using a given predictor there is a reduction in the Gini Index. The Gene Decrease is an average of this Gini Index reduction across the entire forest   
+* `Mean_min_depth`: The depth in a tree that a give node occurred in  
 
 ```{r}
 var_imp <- measure_importance(loan_rf)
@@ -513,10 +506,10 @@ var_imp[,1:7]
 ```
   
 Predictors from the bootstrapped sample set that will give the highest purity are selected first. 
-Credit History looks to be one of the most important predictors because:  
+`Credit History` and `Total Income` looks to be some of the most important predictors because:  
   
-* Is usually at the root on most sampled trees  
-* Has the lowest average depth  
+* They are usually at the root on most sampled trees  
+* Have the lowest average depth  
 * Most often chosen as a root  
 
 ```{r}
@@ -524,10 +517,12 @@ plot_min_depth_distribution(min_depth_distribution(loan_rf), mean_sample = "rele
 plot_multi_way_importance(var_imp, size_measure = "times_a_root")
 ```
   
-Looking at the multi-way importance plot we see that Credit History:  
+Looking at the multi-way importance plot we see that `Credit History`:  
   
 * has the largest accuracy decrease if the variable is omitted from model  
 * It has the highest Gini decrease of all variables  
+  
+Interestingly `Total Income`'s accuracy_decrease is mostly inline with the other predictors, much less than `Credit History`, but it has a higher gini decrease than the rest of the other predictors
   
 ```{r}
 plot_multi_way_importance(loan_rf, x_measure = "accuracy_decrease", y_measure = "gini_decrease")
@@ -593,7 +588,7 @@ gb_cm <- confusionMatrix(testing$Loan_Status, as.factor(labels))
 gb_cm$table
 ```
 
-So with gradient boosting we got 80.32% accuracy.
+So with gradient boosting we got 79.23% accuracy.
 
 ```{r}
 perf_gb <- data.frame(Model = "Gradient Boosting", Accuracy = gb_cm$overall[1], Sensitivity = gb_cm$byClass[1], Specificity = gb_cm$byClass[2])
@@ -603,9 +598,20 @@ perf_gb
 
 
 ## Model Performance
+Looking at the performance table below, we see that the accuracy rate on the test dataset of the Random Forest and Gradient Boosting models are almost the same at approximately at 79%. The Pruned Decision Tree model is very close behind with an accuracy rate of approximately 78%. 
+
+With that said, it is worthwhile to look more into where these models are more accurate and where are they not. While no model in the real-world scenario will have a 100% accuracy rate of new data, we will have to decide which type of incorrect prediction is more costly to the business. For our business scenario of loan approval, it is less costly deny a loan to someone who might pay back than to grant one to someone who will not. Therefore, we will want to minimize the applicants that are likely to default on a loan. We can do this by investigating on the `Sensitivity` and `Specificity` for each of the models:  
+  
+* `Sensitivity (True Positive Rate)`: measures the proportion of applicants that were predicted as approved who were actually approved in the test dataset  
+* `Specificity (True Negative Rate)`: measures the proportion of applicants that were predicted to be rejected for a loan and were also rejected for the loan in the test dataset  
+  
+Choosing a model that has high Sensitivity but low specificity would be more likely to approve loans for applicants who would in reality be denied the loan. For this reason, the Random Forest model which has the highest Specificity rate would subject the company to the least risk and is the model of choice given the high Specificity rate and the a high (among the other models) Accuracy rate. 
+
+An interesting notion here is that having a low Sensitivity rate would mean a lost opportunity for the company to approve lower risk individuals. The balance of Sensitivity and Specificity is definitely dependent on the risk tolerance of the company. For example, Gradient Boosting has the lowest Specificity of all the models but the highest Sensitivity, additionally the difference between the Sensitivity and Specificity is the lowest across all the models and therefore could be a good compromise of risk acceptance and generating additional interest revenue from low risk applicants. Further analysis would need to be conducted on much additional revenue would be generated by lowering the Specificity which is outside the scope of this study. 
+
+In summary, if the company is not averse to risk tolerance then the `Random Forest` model is more suited, and if willing to accept additional risk for additional revenue a good middle ground would be the `Gradient Boosting` model.
 
 ```{r}
 rownames(performance_df) <- NULL
 performance_df 
 ```
-
