@@ -406,26 +406,28 @@ loan_dt <- rpart(Loan_Status ~., data = training, method = "class",
 loan_dt
 
 ```
-Given the baseline tree we see that it is 8 levels deep. Each node shows the predicted class, the probability of that class and the percentage of observations that fall into the given node.
-
-Looking at the splits we see that after rejecting an applicant based based on the lack of credit history, the applicant has a 81% percent of being approved regardless of all the other variables. If we factor in Income (TotalIncome) which is an important feature of any loan application, the percentage of approval only increases by 1% to 82%. Loan Amount and then Property Area respectively also only increase accuracy by 1% each.
+The tree fitted on the training data is displayed below. The simple baseline tree is 8 levels deep. Each node shows the predicted class, the probability of that class and the percentage of observations that fall into the given node. By studying the splits, we see that after rejecting an applicant based on the lack of credit history, the applicant has a 81% percent of being approved regardless of all the other variables. Factoring in `TotalIncome` which is an important feature of any loan application, only increased the percentage of approval by 1% to 82%. Further splitting by Loan Amount and Property Area only increased accuracy by 1% for each step.
 
 ```{r, fig.height=10, fig.width=14}
 rpart.plot(loan_dt, box.col = c("pink", "palegreen3")[loan_dt$frame$yval])
-
 ```
 
-Predict loan_status on test set and calculate accuracy
+To evaluate the simple tree model, we predict `Loan_Status` on the test set and calculate the performance metrics.
+
 ```{r}
 loan_dt_pred <- predict(loan_dt, testing, type = "class")
-loan_dt_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_pred)
-loan_dt_table
-acc_dt_base <-  sum(diag(loan_dt_table))/sum(loan_dt_table)
-
-acc_df<- data.frame(Model = "Base Decision Tree", Accuracy = acc_dt_base)
-
-cat("Accuracy: ", acc_dt_base)
+dt_cm <- confusionMatrix(loan_dt_pred, testing$Loan_Status)
+dt_cm$table
 ```
+
+
+```{r}
+performance_df <- data.frame(Model = NULL, Accuracy = NULL, Sensitivity = NULL, Specificity = NULL)
+perf_dt <- data.frame(Model = "Base Decision Tree", Accuracy = dt_cm$overall[1], Sensitivity = dt_cm$byClass[1], Specificity = dt_cm$byClass[2])
+performance_df <- rbind(performance_df, perf_dt)
+perf_dt
+```
+
 ### Pruned Tree
 
 We now try to prune the tree based on cross-validated error rates. In other words, we will try to find a Cost Complexity pramater which has the lowest cross-validation error rate and then supply this value back into growing the decision tree, but stop growing past a certain nodes where the cross-validation error rate is not minimal
@@ -433,7 +435,6 @@ We now try to prune the tree based on cross-validated error rates. In other word
 From the below we see that the error rate is minimized when the tree is only at 2 levels. This indicates the Decision Tree is provides the most accurate predictions at 2 levels, which is just 1 split on Credit History. This is an unrealistic tree and for practical reasons, we chose to find the cost complexity parameter where pruning the tree will result in atleast 2 splits 
 
 ```{r}
-
 plotcp(loan_dt)
 
 #cost complexity parameter where number of splits is greater than 1 AND the cross-validation error is minimum
@@ -454,18 +455,18 @@ rpart.plot(loan_dt_prune, box.col = c("pink", "palegreen3")[loan_dt$frame$yval])
 ```
 
 Accuracy of pruned tree
+
 ```{r}
 loan_dt_prune_pred <- predict(loan_dt_prune, testing, type = "class")
-loan_dt_prune_table <- table(Actual = testing$Loan_Status, Predicted = loan_dt_prune_pred)
-loan_dt_prune_table
-acc_dt_prune <-  sum(diag(loan_dt_prune_table))/sum(loan_dt_prune_table)
-
-acc_df <- rbind(acc_df, data.frame(Model = "Pruned Decision Tree", Accuracy =acc_dt_prune))
-cat("Accuracy: ", acc_dt_prune)
+dt_pruned_cm <- confusionMatrix(loan_dt_prune_pred, testing$Loan_Status)
+dt_pruned_cm$table
 ```
 
-
-
+```{r}
+perf_dt_pruned <- data.frame(Model = "Pruned Decision Tree", Accuracy = dt_pruned_cm$overall[1], Sensitivity = dt_pruned_cm$byClass[1], Specificity = dt_pruned_cm$byClass[2])
+performance_df <- rbind(performance_df, perf_dt_pruned)
+perf_dt_pruned
+```
 
 ## Random Forest
 
@@ -483,18 +484,16 @@ Form the results below we see that 2 random variables per tree in the forest gen
 Therefore we will set the mtry parameter to the number of variables that generate the lowest Out of Bag error rate
 
 ```{r}
-
-
 min_tree_var <- tuneRF(x = subset(training, select = -Loan_Status), y=training$Loan_Status, ntreeTry = 500)
 val_opt <- min_tree_var [,"mtry"][which.min(min_tree_var [,"OOBError"])]
 
 loan_rf <- randomForest(Loan_Status ~., data = training, importance = TRUE, ntree=500, mtry = val_opt)
 loan_rf
-
 ```
   
   
 Next we want to see if we have generated enough trees so that the Out Of Bag (OOB Error) error rates are minimum. From the below we see that the  OOB error rate is decreasing with 1-20 trees, and rate stabilizes that at around 100 trees. Therefore for this dataset 500 trees is more than enough to minimize the OOB Error rate
+
 ```{r}
 plot(loan_rf, col = c("black", "red", "green"), lty = c(1, 1, 1), main = "Predicted Loan Error Rates")
 legend("right", c(OOB = "Out of Bag Error", "Denied", "Appoved"), col = c("black", "red", "green"), lty = c(1, 1, 1))
@@ -507,8 +506,8 @@ Below is a table of the predictor variables and their various importance factors
 * Accuracy Decrease: the decrease in accuracy of the overall model if a given predictor is not used in the model  
 * Gini Decrease: For each split that is made using a given predictor there is a reduction in the Gini Index. The Gene Decrease is an average of this Gini Index reduction across the entire forest   
 * Mean_min_depth: The depth in a tree that a give node occurred in  
-```{r}
 
+```{r}
 var_imp <- measure_importance(loan_rf)
 var_imp[,1:7]
 ```
@@ -535,28 +534,29 @@ plot_multi_way_importance(loan_rf, x_measure = "accuracy_decrease", y_measure = 
 ```
   
 Random Forest Accuracy  
+
 ```{r}
 loan_rf_pred <- predict(loan_rf, testing, type = "class")
-loan_rf_table <- table(Actual = testing$Loan_Status, Predicted = loan_rf_pred)
-loan_rf_table
-acc_rf <-  sum(diag(loan_rf_table))/sum(loan_rf_table)
-
-cat("Accuracy: ", acc_rf)
-acc_df<- rbind(acc_df, data.frame(Model = "Random Forest", Accuracy = acc_rf))
-
+rf_cm <- confusionMatrix(loan_rf_pred, testing$Loan_Status)
+rf_cm$table
 ```
+
+```{r}
+perf_rf <- data.frame(Model = "Random Forest", Accuracy = rf_cm$overall[1], Sensitivity = rf_cm$byClass[1], Specificity = rf_cm$byClass[2])
+performance_df <- rbind(performance_df, perf_rf)
+perf_rf
+```
+
 
 ## Gradient Boosting
 
 This is another kind on ensemble algorithm in which several model are combined, but instead of running the model is parallel and then combining results, here model are run in series, with each output serving as an input to the next. With each new run of the classifier, the results are improved. Also, each classifiers performance can actually be rather low (shallow trees can be used for example), and with feeding the results to a new classifier, the overall effect is an improved performance.
 
-
-
 Run gradient boost model
 
 ```{r}
 set.seed(123)
-loan_boost =gbm(Loan_Status ~., data = training, 
+loan_boost <- gbm(Loan_Status ~., data = training, 
               n.trees=500,
               interaction.depth=4,
                 shrinkage=0.01,
@@ -582,34 +582,30 @@ of the model and Gender is the least(which is good).
 
 
 ```{r}
-pred = predict.gbm(loan_boost,
-                    newdata = testing,
-                    n.trees = best.iter,
-                    type = "response")
+pred = predict.gbm(loan_boost, newdata = testing, n.trees = best.iter, type = "response")
 ```
-
-
 
 
 ```{r}
-labels = colnames(pred)[apply(pred, 1, which.max)]
-result = data.frame(testing$Loan_Status, labels)
-cm = confusionMatrix(testing$Loan_Status, as.factor(labels))
-print(cm)
+labels <- colnames(pred)[apply(pred, 1, which.max)]
+result <- data.frame(testing$Loan_Status, labels)
+gb_cm <- confusionMatrix(testing$Loan_Status, as.factor(labels))
+gb_cm$table
 ```
-```{r}
-#labels = colnames(pred)[apply(pred, 1, which.max)]
-loan_boost_table <- table(Actual = testing$Loan_Status, Predicted = labels)
-loan_boost_table
-acc_boost <-  sum(diag(loan_boost_table))/sum(loan_boost_table)
-cat("Accuracy: ", acc_boost)
-acc_df <- rbind(acc_df, data.frame(Model = "Gradient Boosting", Accuracy = acc_boost))
-```
+
 So with gradient boosting we got 80.32% accuracy.
 
-## Model Performance
 ```{r}
+perf_gb <- data.frame(Model = "Gradient Boosting", Accuracy = gb_cm$overall[1], Sensitivity = gb_cm$byClass[1], Specificity = gb_cm$byClass[2])
+performance_df <- rbind(performance_df, perf_gb)
+perf_gb
+```
 
-acc_df
+
+## Model Performance
+
+```{r}
+rownames(performance_df) <- NULL
+performance_df 
 ```
 
