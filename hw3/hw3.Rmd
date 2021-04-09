@@ -364,7 +364,7 @@ loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Loan_Status)) +
   ggtitle("Loan Amount and Total Income Across Loan Status")
 ```
 
-Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. Total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. It makes sense to see more graduates at the tail end of income since their education should yield to higher paying jobs. The gender distribution is consistent with the discriminatory pay gap between men and women. 
+Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. In all plots, total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. From these plots, we can make a few additional observations. When looking at education, it makes sense to see more graduates at the tail end of income since their education should yield to higher paying jobs. The gender distribution is consistent with the discriminatory pay gap between men and women. 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,10)}
 p1 <- ggplot(data=loan, aes(x=TotalIncome, fill=Education)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
@@ -411,7 +411,7 @@ The tree fitted on the training data is displayed below. The simple baseline tre
 rpart.plot(loan_dt, box.col = c("pink", "palegreen3")[loan_dt$frame$yval])
 ```
 
-To evaluate the simple tree model, we predict `Loan_Status` on the test set and calculate the performance metrics.
+To evaluate the simple tree model, we predict `Loan_Status` on the test set and calculate the performance metrics. The confusion matrix below summarizes the results. We also record the accuracy, sensitivity and specificity performance metrics in a data frame for comparison with alternative classification methods.
 
 ```{r}
 loan_dt_pred <- predict(loan_dt, testing, type = "class")
@@ -429,9 +429,9 @@ perf_dt
 
 ### Pruned Tree
 
-We now try to prune the tree based on cross-validated error rates. In other words, we will try to find a Cost Complexity pramater which has the lowest cross-validation error rate and then supply this value back into growing the decision tree, but stop growing past a certain nodes where the cross-validation error rate is not minimal
+In order to obtain a tree which generalizes better to unseen data (lower variance), we now prune the tree based on cross-validated error rates. We look for the Cost Complexity parameter which results in the lowest cross-validation error rate. The tuned parameter is then fed back into the tree growing procedure and is used as a threshold to exceed to justify a node split. This ensures that the tree does not grow past certain nodes for which the cross-validation error rate is not minimal.
 
-From the below we see that the error rate is minimized when the tree is only at 2 levels. This indicates the Decision Tree is provides the most accurate predictions at 2 levels, which is just 1 split on Credit History. This is an unrealistic tree and for practical reasons, we chose to find the cost complexity parameter where pruning the tree will result in atleast 2 splits 
+The tuning procedure indicated that the Decision Tree which provided the most accurate predictions is the minimal tree containing 2 terminal node, with just a single split on Credit History. This is an unrealistic tree which would limit the business loan issuing volume and for practical reasons, we chose to use the cost complexity parameter where the pruned tree contained at least 2 splits. From the tuning output below we see on the upper axis that the error rate is minimized with a tree of size 2, but the relative error only marginally increased when a tree with 3 terminal nodes was used.
 
 ```{r}
 plotcp(loan_dt)
@@ -440,15 +440,14 @@ min_err <- (cost_complexity_dt %>% filter(nsplit > 1) %>% slice(which.min(xerror
 cat("Minimum Error: ", min_err)
 ```
 
-We prune tree based on CP value that has lowest cross validation error rate with atleaset 2 splits. The resulting tree is 3 levels levels and the most significant predictors are `Credit History` and `Total Income`
+The resulting tree with 3 terminal nodes is displayed below and the most significant predictors are `Credit History` and `Total Income`.
 
 ```{r}
 loan_dt_prune <- prune(loan_dt, min_err)
-plotcp(loan_dt_prune)
 rpart.plot(loan_dt_prune, box.col = c("pink", "palegreen3")[loan_dt$frame$yval])
 ```
 
-Accuracy of pruned tree
+As before, the classification result on the test set in summarized in the confusion matrix and in the data frame row below.
 
 ```{r}
 loan_dt_prune_pred <- predict(loan_dt_prune, testing, type = "class")
@@ -464,18 +463,14 @@ perf_dt_pruned
 
 ## Random Forest
 
-The Random Forest model is similar to Decision Tree model in terms of how it constructs a tree. The difference is that the Random Forest model is a collection (ensamble) of Decision Trees. Each of these trees in the forest are constructed bootstrapped observations and randomized subset of features. Each tree in the forest then classifies a given observation and then the majority of the classification class is determined as the predicted class for that given observation
-
-To build an optimal forest there are 2 parameters that we can tune:  
+The Random Forest model is an ensemble method built from many individual decision trees and the classification output is determined by majority voting. The method aims to reduce the variance of individual trees and is particularly suited when predictors exhibit collinearity. Each tree in the forest is constructed using bootstrapped observations and a randomized subset of features. The forest growing procedure is controled by two tuning parameters that we seek to optimize:
   
 * `ntree`: the number of trees in the forest
-* `mtry`: the number of of random variables for each tree 
+* `mtry`: the number of random variables used to build each tree 
 
-For classification datasets, the generally recommended subset of variables is the square root of the total number of predictor variables. In our dataset this is this is 3, since we have 10 total predictor variables
+For classification exercises, the default subset of variables is the square root of the total number of predictor variables. Since we have 10 predictor variables in our dataset, the default value is 3. 
 
-Form the results below we see that 2 random variables per tree in the forest generates the lowest Out of Bag error. In quick summary, when using bootstrapped samples, about a third of the observations do not end up getting used in construction of the trees, and the model's prediction on these new (to the model) observations is the Out of Bag Error
-
-Therefore we will set the `mtry` parameter to the number of variables that generate the lowest Out of Bag error rate
+When using bootstrapped samples, about a third of the observations are not used in construction of the trees, and the model's prediction on these unseen observations is referred to as the Out of Bag Error. From the tuning results below we see random predictor subsets of size 2 and 3 per tree generates the identical values for the lowest Out of Bag error. The optimal value is chosen to be 2 by the model which is subsequently used as the `mtry` parameter.
 
 ```{r}
 min_tree_var <- tuneRF(x = subset(training, select = -Loan_Status), y=training$Loan_Status, ntreeTry = 500)
@@ -484,51 +479,44 @@ loan_rf <- randomForest(Loan_Status ~., data = training, importance = TRUE, ntre
 loan_rf
 ```
   
-  
-Next we want to see if we have generated enough trees within the forest so that the Out Of Bag (OOB Error) error rates are minimum. From the below we see that the  OOB error rate is decreasing with 1-20 trees, and rate stabilizes that at around 100 trees. Therefore for this dataset 500 trees is more than enough to minimize the OOB Error rate
+Next we generate a large number of forests of different sizes in order to identify the parameter for which the Out Of Bag (OOB Error) error rates is minimal. From the plot of error rates below, we see that the OOB error rate decreases significantly up to about 50 tress, and further stabilizes around 100 trees. For this dataset 500 trees is more than enough to minimize the OOB Error rate.
 
 ```{r}
 plot(loan_rf, col = c("black", "red", "green"), lty = c(1, 1, 1), main = "Predicted Loan Error Rates")
 legend("right", c(OOB = "Out of Bag Error", "Denied", "Appoved"), col = c("black", "red", "green"), lty = c(1, 1, 1))
 ```
   
-An area of interest like Decision Trees is Variable Importance, which is a scale of a given variable's predictive power and is taken by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important"  
+Similarly to Decision Trees, we are interested in predictive power of individual variables but but in Random Forests, the most predictive feature is obscured by the complexity and not simply found at the top of the tree. We turn to Variable Importance, which is a scale of a given variable's predictive power which is derived by taking the average purity of child nodes that the split causes across all trees in the forest. Variables with large increases in purity are considered more "important".  
   
-Below is a table of the predictor variables and their various importance factors. Some definitions to help understand the below table:  
+Below is a table of the predictor variables and their various importance factors. Some definitions are provided below to help interpret the following table:  
   
-* `Accuracy Decrease`: the decrease in accuracy of the overall model if a given predictor is not used in the model  
-* `Gini Decrease`: For each split that is made using a given predictor there is a reduction in the Gini Index. The Gene Decrease is an average of this Gini Index reduction across the entire forest   
-* `Mean_min_depth`: The depth in a tree that a give node occurred in  
+* `Accuracy Decrease`: The decrease in accuracy of the overall model if a given predictor is not used in the model  
+* `Gini Decrease`: Each split results in a reduction in the Gini Index. The Gini Decrease is an average of this Gini Index reduction across the entire forest   
+* `Mean_min_depth`: The average depth in a tree that a given node is found at
 
 ```{r}
 var_imp <- measure_importance(loan_rf)
 var_imp[,1:7]
 ```
   
-Predictors from the bootstrapped sample set that will give the highest purity are selected first. 
-`Credit History` and `Total Income` looks to be some of the most important predictors because:  
+We can visualize this table in a few ways which are presented below. We make the following observations:
   
-* They are usually at the root on most sampled trees  
-* Have the lowest average depth  
-* Most often chosen as a root  
+* Predictors that yield the highest purity are selected first and are often found at the top of trees 
+* `Credit History` and `Total Income` are the the most important predictors because they are most often at the root of individual trees and have the lowest average depth 
+
 
 ```{r}
 plot_min_depth_distribution(min_depth_distribution(loan_rf), mean_sample = "relevant_trees")
 plot_multi_way_importance(var_imp, size_measure = "times_a_root")
 ```
   
-Looking at the multi-way importance plot we see that `Credit History`:  
-  
-* has the largest accuracy decrease if the variable is omitted from model  
-* It has the highest Gini decrease of all variables  
-  
-Interestingly `Total Income`'s accuracy_decrease is mostly inline with the other predictors, much less than `Credit History`, but it has a higher gini decrease than the rest of the other predictors
+Studying the multi-way importance plot we see that `Credit History` stands alone with the largest accuracy decrease if the variable is omitted from model and has the highest Gini decrease of all variables. Interestingly the accuracy decrease when excluding `Total Income`'s is mostly in line with the other predictors, much less than `Credit History`. However, it retains a higher gini decrease than the rest of the other predictors.
   
 ```{r}
 plot_multi_way_importance(loan_rf, x_measure = "accuracy_decrease", y_measure = "gini_decrease")
 ```
   
-Random Forest Accuracy  
+The classification results and metrics of the Random Forest model is summarized below.
 
 ```{r}
 loan_rf_pred <- predict(loan_rf, testing, type = "class")
