@@ -34,7 +34,9 @@ library(rpart) # For Decision Trees models
 library(rpart.plot) # For Decision Tree Plots
 library(randomForest) # For Random Forest models
 library(randomForestExplainer) # For Random Forest Variable Importance Analysis
-library(gbm) #Gradient Boosting
+library(gbm) # For Gradient Boosted Models
+library(pROC) # For AUC calculations
+library(ROCR) # For ROC and AUC plots
 ```
 
 # Penguins Dataset
@@ -364,7 +366,7 @@ loan %>% ggplot(aes(x=TotalIncome, y=LoanAmount, color=Loan_Status)) +
   ggtitle("Loan Amount and Total Income Across Loan Status")
 ```
 
-Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. In all plots, total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. From these plots, we can make a few additional observations. When looking at education, it makes sense to see more graduates at the tail end of income since their education should yield to higher paying jobs. The gender distribution is consistent with the discriminatory pay gap between men and women. 
+Other than credit history, total income (applicant income + coapplicant income) seems like the most logical basis for approving or denying a loan. The histograms below compare total income across all levels of the categorical variables. In all plots, total income is skewed to the right tail, with a few observations at the higher end of the log-transformed income scale. From these plots, we can make a few additional observations. When looking at education, it makes sense to see more graduates at the tail end of income since their education should yield to higher paying jobs. The gender distribution is consistent with the discriminatory pay gap between men and women. The remaining plot do not provide much additional insight.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.dim=c(12,10)}
 p1 <- ggplot(data=loan, aes(x=TotalIncome, fill=Education)) + geom_histogram(alpha=0.5) +  scale_x_continuous(trans='log10')
@@ -401,8 +403,7 @@ The first step is to grow a baseline decision tree based on splits generating th
 After growing a complete simple tree, we will need to decide if it requires pruning in order to reduce its complexity. Overly complex trees have high variance and do not predict well on new, unseen data. In our case, we use the Complexity Parameter set to a value of 0 as a measure of the required split improvement. The Cost Complexity parameter is slightly different from Information Gain and Gini index, but is conceptually similar. The parameter modulates the amount by which splitting a given node improved the relative error, in other words, it is the minimum improvement in the overall model needed at each node to justify the split. 
 
 ```{r}
-loan_dt <- rpart(Loan_Status ~., data = training, method = "class",
-                 parms = list(split="information"), control = rpart.control(cp=0))
+loan_dt <- rpart(Loan_Status ~., data = training, method = "class", parms = list(split="information"), control = rpart.control(cp=0))
 loan_dt
 ```
 The tree fitted on the training data is displayed below. The simple baseline tree is 8 levels deep. Each node shows the predicted class, the probability of that class and the percentage of observations that fall into the given node. By studying the splits, we see that after rejecting an applicant based on the lack of credit history, the applicant has a 81% percent of being approved regardless of all the other variables. Factoring in `TotalIncome` which is an important feature of any loan application, only increased the percentage of approval by 1% to 82%. Further splitting by Loan Amount and Property Area only increased accuracy by 1% for each step.
@@ -530,29 +531,32 @@ performance_df <- rbind(performance_df, perf_rf)
 perf_rf
 ```
 
-
 ## Gradient Boosting
 
-This is another kind on ensemble algorithm in which several model are combined, but instead of running the model is parallel and then combining results, here model are run in series, with each output serving as an input to the next. With each new run of the classifier, the results are improved. Also, each classifiers performance can actually be rather low (shallow trees can be used for example), and with feeding the results to a new classifier, the overall effect is an improved performance.
+Gradient Boosting another kind of ensemble modeling technique in which several basic models referred to as weak learners are combined to improve performance. Instead of building models in parallel and determining the output using majority voting, models are run in an additive series fashion, with each model output serving as an input to the next. This iterative procedure improves results with each new run of the classifier. Given sufficient iterations, the training error can be reduced to zero at the expense of computational speed. Gradient boosting is a "slow" learning method modulated by the shrinkage parameter `lambda`.
 
-Run gradient boost model
+With gradient boosted trees, the performance of each individual tree is rather low. The weak learners are usually shallow trees which can be as simple as stumps. The error of each classification step (pseudo-resdiuals) is weighted in order to place more emphasis on the misclassified observations. The procedure is further controled by two additional parameters: number of trees and interaction depth (number of splits).
 
 ```{r}
 set.seed(123)
+# gmb requires recoding the response as numeric
+training$Loan_Status <- ifelse(training$Loan_Status == "Y", 1, 0)
+
 loan_boost <- gbm(Loan_Status ~., data = training, 
               n.trees=500,
               interaction.depth=4,
-                shrinkage=0.01,
+              shrinkage=0.01,
               bag.fraction=0.5,
-              distribution="multinomial",
+              distribution="bernoulli",
               verbose=FALSE,
               cv.folds = 5,
               n.cores=2
               )
 ```
 
-Check the performance of the model, also check the optimum number of trees for "cv" method.
-Looks like optimum numbers of tress is 111. We will run our predictions with that number.
+Using cross-validation to find the optimal paramter for the number of trees yielded a value of 207 which is the value used to compute our predictions.
+
+Examining feature importance, we once again see that `Credit_History` and `TotalIncome` are the most important predictors. Interstingly, `LoanAmount` holds a higher importance that in other models. We also notice that predictors such as `Gender` are on the low end of importance which is something that we would hope to be true as gender should have no value in determining if an individual should be issued a loan.
 
 ```{r}
 # Check performance using 5-fold cross-validation
@@ -560,23 +564,17 @@ best.iter <- gbm.perf(loan_boost, method="cv")
 print(best.iter)
 summary(loan_boost)
 ```
-From the model we see that features Credit_History, TotalIncome and LoanAmount features are most important variables 
-of the model and Gender is the least(which is good).
 
-
-```{r}
-pred = predict.gbm(loan_boost, newdata = testing, n.trees = best.iter, type = "response")
-```
-
+As before, classification results are summarized below.
 
 ```{r}
-labels <- colnames(pred)[apply(pred, 1, which.max)]
-result <- data.frame(testing$Loan_Status, labels)
-gb_cm <- confusionMatrix(testing$Loan_Status, as.factor(labels))
+# gmb requires recoding the response as numeric
+testing$Loan_Status <- ifelse(testing$Loan_Status == "Y", 1, 0)
+loan_gb_prob <- predict(loan_boost, newdata = testing, n.trees = best.iter, type = "response")
+loan_gb_pred <- as.factor(ifelse(loan_gb_prob > 0.5, 1, 0))
+gb_cm <- confusionMatrix(loan_gb_pred, as.factor(testing$Loan_Status))
 gb_cm$table
 ```
-
-So with gradient boosting we got 79.23% accuracy.
 
 ```{r}
 perf_gb <- data.frame(Model = "Gradient Boosting", Accuracy = gb_cm$overall[1], Sensitivity = gb_cm$byClass[1], Specificity = gb_cm$byClass[2])
@@ -586,20 +584,55 @@ perf_gb
 
 
 ## Model Performance
-Looking at the performance table below, we see that the accuracy rate on the test dataset of the Random Forest and Gradient Boosting models are almost the same at approximately at 79%. The Pruned Decision Tree model is very close behind with an accuracy rate of approximately 78%. 
 
-With that said, it is worthwhile to look more into where these models are more accurate and where are they not. While no model in the real-world scenario will have a 100% accuracy rate of new data, we will have to decide which type of incorrect prediction is more costly to the business. For our business scenario of loan approval, it is less costly deny a loan to someone who might pay back than to grant one to someone who will not. Therefore, we will want to minimize the applicants that are likely to default on a loan. We can do this by investigating on the `Sensitivity` and `Specificity` for each of the models:  
+Looking at the performance table below, we see that the accuracy rate on the test dataset of the Random Forest and Gradient Boosting models are almost the same at approximately at 79%. Random Forest has a slight edge in accuracy. The Pruned Decision Tree model is very close behind with an accuracy rate of approximately 78%. 
+
+With that said, it is worthwhile to look more into where these models are more accurate and where are they not. While no model in the real-world scenario will have a 100% accuracy rate of new data, we will have to decide which type of incorrect prediction is more costly to the business. For our business scenario of loan approval, it is less costly to deny a loan to someone who might pay it back than to grant one to someone who will not. Therefore, we will want to minimize the applicants that are likely to default on a loan. We can do this by investigating the `Sensitivity` and `Specificity` for each of the models:  
   
 * `Sensitivity (True Positive Rate)`: measures the proportion of applicants that were predicted as approved who were actually approved in the test dataset  
 * `Specificity (True Negative Rate)`: measures the proportion of applicants that were predicted to be rejected for a loan and were also rejected for the loan in the test dataset  
   
-Choosing a model that has high Sensitivity but low specificity would be more likely to approve loans for applicants who would in reality be denied the loan. For this reason, the Random Forest model which has the highest Specificity rate would subject the company to the least risk and is the model of choice given the high Specificity rate and the a high (among the other models) Accuracy rate. 
+A model with high sensitivity but low specificity would be more likely to approve loans for applicants who should not receive one. For this reason, the Random Forest model which has the highest specificity is the lowest risk option and is the model of choice given the high specificity rate and the highest accuracy rate. 
 
-An interesting notion here is that having a low Sensitivity rate would mean a lost opportunity for the company to approve lower risk individuals. The balance of Sensitivity and Specificity is definitely dependent on the risk tolerance of the company. For example, Gradient Boosting has the lowest Specificity of all the models but the highest Sensitivity, additionally the difference between the Sensitivity and Specificity is the lowest across all the models and therefore could be a good compromise of risk acceptance and generating additional interest revenue from low risk applicants. Further analysis would need to be conducted on much additional revenue would be generated by lowering the Specificity which is outside the scope of this study. 
+An interesting notion here is that having a low sensitivity would mean a lost opportunity for the company to issue loands to lower risk individuals. Ultimately, the balance of sensitivity and specificity is dependent on the risk tolerance of the company. The Random Forest and Gradient Boosted Tree models have the highest specificity but lower sensitivity than the simple decision tree. Further analysis would need to be conducted on much additional revenue would be generated by lowering the specificity in favor of sensitvity which is outside the scope of this study. 
 
-In summary, if the company is not averse to risk tolerance then the `Random Forest` model is more suited, and if willing to accept additional risk for additional revenue a good middle ground would be the `Gradient Boosting` model.
+Ultimately, the ensemble models provided the most risk balanced performance over the single tree models, with Random Forest edging out higher overall accuracy.
 
 ```{r}
 rownames(performance_df) <- NULL
 performance_df 
 ```
+
+We can diagnose the best overall classifier by comparing the area under the curve (AUC) of the receiver operating characteristics curve (ROC) as shown on the plot below. The ideal classifier hugs the top left corner. As stated earlier, the ensemble models provide performance enhacements over the base and pruned trees. The Gradient Boosted tree model has the highest AUC value of 0.757 while the Random Forest model slightly lower at 0.746. However, we stick with the conclusion that the Random Forest model is slightly superior due to the minor sensitivity improvement over the Gradient Boosted model
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+loan_dt_prob <- predict(loan_dt, testing, type = "prob")[,"Y"]
+loan_dtp_prob <- predict(loan_dt_prune, testing, type = "prob")[,"Y"]
+loan_rf_prob <- predict(loan_rf, testing, type = "prob")[,"Y"]
+auc1 <- pROC::auc(roc(testing$Loan_Status, loan_dt_prob))
+auc2 <- pROC::auc(roc(testing$Loan_Status, loan_dtp_prob))
+auc3 <- pROC::auc(roc(testing$Loan_Status, loan_rf_prob))
+auc4 <- pROC::auc(roc(testing$Loan_Status, loan_gb_prob))
+
+preds <- cbind(p1 = loan_dt_prob, 
+               p2 = loan_dtp_prob,
+               p3 = loan_rf_prob,
+               p4 = loan_gb_prob)
+
+n <- 4 # you have n models
+colors <- c('red', 'blue', 'green','orange') # 2 colors
+aucs <- c(auc1, auc2, auc3, auc4)
+pos <- c(0.8,0.75,0.7,0.65)
+
+for (i in 1:n) {
+   plot(performance(prediction(preds[,i],testing$Loan_Status),"tpr","fpr"), add=(i!=1), col=colors[i], lwd=1)
+   text(0.8, pos[i], labels=sprintf("AUC: %0.3f", aucs[i]), col=colors[i])
+}
+legend(x = "bottomright", 
+       legend = c("Decision Tree", "Pruned Decision Tree", "Random Forest", "Gradient Boosting"),
+       fill = colors)
+title("Model Performance Comparison")
+```
+
+
+
