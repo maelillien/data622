@@ -1,0 +1,58 @@
+---
+title: "DATA 622 HW4 - PCA, Clustering and SVM"
+author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
+date: "4/12/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(caret) # For featureplot, classification report
+library(corrplot) # For correlation matrix
+library(AppliedPredictiveModeling)
+library(mice) # For data imputation
+library(VIM) # For missing data visualization
+library(gridExtra) # For grid plots
+library(pROC) # For AUC calculations
+library(ROCR) # For ROC and AUC plots
+```
+
+
+# Loan Approval Dataset
+
+```{r}
+adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
+adhd <- adhd_raw
+```
+
+```{r}
+head(adhd)
+```
+
+## Data Pre-processing
+
+
+
+#### Imputation of Missing Values
+
+## Data Exploration
+
+## Data Processing
+
