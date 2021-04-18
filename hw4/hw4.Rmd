@@ -1,5 +1,5 @@
 ---
-title: "DATA 622 HW4 - PCA, Clustering and SVM"
+title: "DATA 622 HW4 - Clustering, PCA and SVM"
 author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
 date: "4/12/2021"
 output: 
@@ -35,7 +35,7 @@ library(ROCR) # For ROC and AUC plots
 ```
 
 
-# Loan Approval Dataset
+# ADHD Dataset
 
 ```{r}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
@@ -46,13 +46,95 @@ adhd <- adhd_raw
 head(adhd)
 ```
 
+```{r}
+adhd[adhd==''] <- NA 
+skim(adhd)
+```
+
+
 ## Data Pre-processing
 
+Variables need to be numeric, computations based on distance.
 
+```{r}
+# Selecting only variables not containing Qs
+adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
+# Renaming variables
+adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
+               Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
+
+```
 
 #### Imputation of Missing Values
 
+```{r}
+mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# pmm for numerical variables, logreg for binary factor variables and polyreg for multilevel factor variables
+init <- mice(adhd, maxit=0)
+meth <- init$method
+predM <- init$predictorMatrix
+meth[c('CourtOrder','Violence','Conduct','Suicide')] <- 'logreg'
+meth[c('Alcohol','THC','Cocaine','Stimulants','Sedatives','Opioids','Abuse', 'NonSubstDX','SubstDX','PsychMeds')] <- 'polyreg'
+meth[c('Age','Sex','Race','ADHDTotal','MDTotal')] = ''
+imputed <- mice(adhd, method=meth, predictorMatrix=predM, m=5, seed=500)
+adhd_imp <- complete(imputed)
+
+#'NonSubstDX','SubstDX','PsychMeds' are discrete numerical variables and should be imputed using other techniques: mean, median or mode
+
+```
+
 ## Data Exploration
 
+
+
 ## Data Processing
+
+```{r}
+# Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
+adhd$Education <- ifelse(adhd$Education <= 8, 1, ifelse(adhd$Education <= 12 & adhd$Education > 8, 2, ifelse(adhd$Education > 12, 3, 99)))
+# Creating new variables based on type of abuse
+adhd$Abuse <- as.numeric(adhd$Abuse != 0)
+adhd$AbuseP <- as.numeric(adhd$Abuse == 1)
+adhd$AbuseS <- as.numeric(adhd$Abuse == 2)
+adhd$AbuseE <- as.numeric(adhd$Abuse == 3)
+adhd$AbusePS <- as.numeric(adhd$Abuse == 4)
+adhd$AbusePE <- as.numeric(adhd$Abuse == 5)
+adhd$AbuseES <- as.numeric(adhd$Abuse == 6)
+adhd$AbusePES <- as.numeric(adhd$Abuse == 7)
+```
+
+```{r}
+head(adhd)
+```
+
+
+Data must be scaled
+
+```{r}
+adhd_scales <- scale(adhd_imp)
+```
+
+
+# Clustering
+
+```{r}
+# Dissimilarity matrix
+d <- dist(df, method = "euclidean")
+
+# Hierarchical clustering using Complete Linkage
+hc1 <- hclust(d, method = "complete" )
+
+# Plot the obtained dendrogram
+plot(hc1, cex = 0.6, hang = -1)
+```
+
+
+# PCA
+
+# SVM
+
+
 
