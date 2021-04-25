@@ -180,6 +180,13 @@ dend <- adhd.complete %>%  scale %>%
 dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 ```
 
+```{r, fig.width = 12}
+dend <- adhd.complete %>%  scale %>% 
+        dist %>% hclust(method = "average") %>% as.dendrogram
+dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
+
+```
+
 
 # PCA
 
