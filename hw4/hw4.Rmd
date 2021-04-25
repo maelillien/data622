@@ -63,7 +63,21 @@ adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.me
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
 
+# shift sex variable to 0 and 1
+adhd$Sex <- adhd$Sex-1
+
+
 ```
+
+```{r}
+#adhd <- data.frame(lapply(adhd,as.numeric))
+adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
+```
+
+
+
+
+
 
 #### Imputation of Missing Values
 
@@ -71,16 +85,33 @@ adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sed
 mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
 ```
 
+```{r}
+dim(adhd)
+```
+
+
+```{r}
+# Discard PsychMeds
+adhd.complete <- adhd %>% select(-c(PsychMeds))
+
+# Keep only complete cases
+adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
+```
+
+```{r}
+dim(adhd.complete)
+```
+
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-# pmm for numerical variables, logreg for binary factor variables and polyreg for multilevel factor variables
-init <- mice(adhd, maxit=0)
-meth <- init$method
-predM <- init$predictorMatrix
-meth[c('CourtOrder','Violence','Conduct','Suicide')] <- 'logreg'
-meth[c('Alcohol','THC','Cocaine','Stimulants','Sedatives','Opioids','Abuse', 'NonSubstDX','SubstDX','PsychMeds')] <- 'polyreg'
-meth[c('Age','Sex','Race','ADHDTotal','MDTotal')] = ''
-imputed <- mice(adhd, method=meth, predictorMatrix=predM, m=5, seed=500)
-adhd_imp <- complete(imputed)
+# pmm for numerical variables, logreg for binary factor variables and polyr for ordered factor variables
+# init <- mice(adhd, maxit=0)
+# meth <- init$method
+# predM <- init$predictorMatrix
+# meth[c('CourtOrder','Violence','Conduct','Suicide')] <- 'logreg'
+# meth[c('Alcohol','THC','Cocaine','Stimulants','Sedatives','Opioids','Abuse', 'NonSubstDX','SubstDX','PsychMeds')] <- 'polr'
+# meth[c('Age','Sex','Race','ADHDTotal','MDTotal')] = ''
+# imputed <- mice(adhd, method=meth, predictorMatrix=predM, maxit=50, m=5, seed=500)
+# adhd_imp <- complete(imputed)
 
 #'NonSubstDX','SubstDX','PsychMeds' are discrete numerical variables and should be imputed using other techniques: mean, median or mode
 
@@ -94,27 +125,27 @@ adhd_imp <- complete(imputed)
 
 ```{r}
 # Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
-adhd$Education <- ifelse(adhd$Education <= 8, 1, ifelse(adhd$Education <= 12 & adhd$Education > 8, 2, ifelse(adhd$Education > 12, 3, 99)))
+adhd.complete$Education <- ifelse(adhd.complete$Education <= 8, 1, ifelse(adhd.complete$Education <= 12 & adhd.complete$Education > 8, 2, ifelse(adhd.complete$Education > 12, 3, 99)))
 # Creating new variables based on type of abuse
-adhd$Abuse <- as.numeric(adhd$Abuse != 0)
-adhd$AbuseP <- as.numeric(adhd$Abuse == 1)
-adhd$AbuseS <- as.numeric(adhd$Abuse == 2)
-adhd$AbuseE <- as.numeric(adhd$Abuse == 3)
-adhd$AbusePS <- as.numeric(adhd$Abuse == 4)
-adhd$AbusePE <- as.numeric(adhd$Abuse == 5)
-adhd$AbuseES <- as.numeric(adhd$Abuse == 6)
-adhd$AbusePES <- as.numeric(adhd$Abuse == 7)
+adhd.complete$Abuse <- as.numeric(adhd.complete$Abuse != 0)
+adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1)
+adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2)
+adhd.complete$AbuseE <- as.numeric(adhd.complete$Abuse == 3)
+adhd.complete$AbusePS <- as.numeric(adhd.complete$Abuse == 4)
+adhd.complete$AbusePE <- as.numeric(adhd.complete$Abuse == 5)
+adhd.complete$AbuseES <- as.numeric(adhd.complete$Abuse == 6)
+adhd.complete$AbusePES <- as.numeric(adhd.complete$Abuse == 7)
 ```
 
 ```{r}
-head(adhd)
+head(adhd.complete)
 ```
 
 
 Data must be scaled
 
 ```{r}
-adhd_scales <- scale(adhd_imp)
+adhd.scaled <- scale(adhd.complete)
 ```
 
 
@@ -122,7 +153,7 @@ adhd_scales <- scale(adhd_imp)
 
 ```{r}
 # Dissimilarity matrix
-d <- dist(df, method = "euclidean")
+d <- dist(adhd.scaled, method = "euclidean")
 
 # Hierarchical clustering using Complete Linkage
 hc1 <- hclust(d, method = "complete" )
@@ -130,6 +161,7 @@ hc1 <- hclust(d, method = "complete" )
 # Plot the obtained dendrogram
 plot(hc1, cex = 0.6, hang = -1)
 ```
+
 
 
 # PCA
