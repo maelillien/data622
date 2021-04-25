@@ -32,6 +32,7 @@ library(VIM) # For missing data visualization
 library(gridExtra) # For grid plots
 library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
+library(dendextend)
 ```
 
 
@@ -157,11 +158,27 @@ d <- dist(adhd.scaled, method = "euclidean")
 
 # Hierarchical clustering using Complete Linkage
 hc1 <- hclust(d, method = "complete" )
-
-# Plot the obtained dendrogram
-plot(hc1, cex = 0.6, hang = -1)
 ```
 
+
+```{r, fig.width = 12}
+# Plot the obtained dendrogram
+plot(hc1, cex = 0.3, hang = -1)
+abline(h = 10, lty = 2)
+```
+
+```{r, fig.width = 12}
+# Convert hclust into a dendrogram and plot
+hcd <- as.dendrogram(hc1)
+plot(hcd, type = "triangle", ylab = "Height", cex = 0.3)
+abline(h = 9, lty = 2)
+```
+
+```{r, fig.width = 12}
+dend <- adhd.complete %>%  scale %>% 
+        dist %>% hclust %>% as.dendrogram
+dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
+```
 
 
 # PCA
