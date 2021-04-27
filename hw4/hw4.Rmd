@@ -143,6 +143,24 @@ d <- dist(adhd.scaled, method = "euclidean")
 hc1 <- hclust(d, method = "complete" )
 ```
 
+```{r}
+sub_grp <- cutree(hc1, k = 6)
+table(sub_grp)
+```
+
+```{r}
+adhd.complete %>%
+  mutate(cluster = sub_grp) %>%
+  head
+```
+
+```{r}
+adhd.complete %>%
+  mutate(cluster = sub_grp) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
+```
+
 
 
 ```{r, fig.width = 12}
@@ -150,6 +168,9 @@ dend <- adhd.complete %>%  scale %>%
         dist %>% hclust %>% as.dendrogram
 dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 ```
+
+
+
 
 ```{r, fig.width = 12}
 dend <- adhd.complete %>%  scale %>% 
@@ -195,6 +216,30 @@ fviz_pca_var(res.pca,
              )
 ```
 
+```{r}
+pca_data.adhd <- adhd_raw %>% select(ADHD.Q1:ADHD.Q18)
+pca_data.md <- adhd_raw %>% select(MD.Q1a:MD.Q3)
+```
+
+```{r}
+res.pca.adhd <- prcomp(pca_data.adhd, scale = FALSE)
+res.var <- get_pca_var(res.pca.adhd)
+fviz_eig(res.pca.adhd)
+```
+
+```{r}
+res.var$contrib[,1:3]        # Contributions to the PCs
+```
+
+```{r}
+res.pca.md <- prcomp(pca_data.md, scale = FALSE)
+res.var <- get_pca_var(res.pca.md)
+fviz_eig(res.pca.md)
+```
+
+```{r}
+res.var$contrib[,1:4]        # Contributions to the PCs
+```
 
 
 # SVM
