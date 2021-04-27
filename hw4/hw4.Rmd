@@ -103,21 +103,6 @@ adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
 dim(adhd.complete)
 ```
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
-# pmm for numerical variables, logreg for binary factor variables and polyr for ordered factor variables
-# init <- mice(adhd, maxit=0)
-# meth <- init$method
-# predM <- init$predictorMatrix
-# meth[c('CourtOrder','Violence','Conduct','Suicide')] <- 'logreg'
-# meth[c('Alcohol','THC','Cocaine','Stimulants','Sedatives','Opioids','Abuse', 'NonSubstDX','SubstDX','PsychMeds')] <- 'polr'
-# meth[c('Age','Sex','Race','ADHDTotal','MDTotal')] = ''
-# imputed <- mice(adhd, method=meth, predictorMatrix=predM, maxit=50, m=5, seed=500)
-# adhd_imp <- complete(imputed)
-
-#'NonSubstDX','SubstDX','PsychMeds' are discrete numerical variables and should be imputed using other techniques: mean, median or mode
-
-```
-
 ## Data Exploration
 
 
@@ -128,14 +113,11 @@ dim(adhd.complete)
 # Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
 adhd.complete$Education <- ifelse(adhd.complete$Education <= 8, 1, ifelse(adhd.complete$Education <= 12 & adhd.complete$Education > 8, 2, ifelse(adhd.complete$Education > 12, 3, 99)))
 # Creating new variables based on type of abuse
-adhd.complete$Abuse <- as.numeric(adhd.complete$Abuse != 0)
-adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1)
-adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2)
-adhd.complete$AbuseE <- as.numeric(adhd.complete$Abuse == 3)
-adhd.complete$AbusePS <- as.numeric(adhd.complete$Abuse == 4)
-adhd.complete$AbusePE <- as.numeric(adhd.complete$Abuse == 5)
-adhd.complete$AbuseES <- as.numeric(adhd.complete$Abuse == 6)
-adhd.complete$AbusePES <- as.numeric(adhd.complete$Abuse == 7)
+adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 7)
+adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
+adhd.complete$AbuseE <- as.numeric(adhd.complete$Abuse == 3 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
+adhd.complete <- adhd.complete %>% select(-c(Abuse))
+
 ```
 
 ```{r}
@@ -189,6 +171,8 @@ dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
 
 
 # PCA
+
+
 
 # SVM
 
