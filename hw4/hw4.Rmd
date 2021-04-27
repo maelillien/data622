@@ -33,6 +33,7 @@ library(gridExtra) # For grid plots
 library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
 library(dendextend)
+library(factoextra)
 ```
 
 
@@ -143,18 +144,6 @@ hc1 <- hclust(d, method = "complete" )
 ```
 
 
-```{r, fig.width = 12}
-# Plot the obtained dendrogram
-plot(hc1, cex = 0.3, hang = -1)
-abline(h = 10, lty = 2)
-```
-
-```{r, fig.width = 12}
-# Convert hclust into a dendrogram and plot
-hcd <- as.dendrogram(hc1)
-plot(hcd, type = "triangle", ylab = "Height", cex = 0.3)
-abline(h = 9, lty = 2)
-```
 
 ```{r, fig.width = 12}
 dend <- adhd.complete %>%  scale %>% 
@@ -171,6 +160,40 @@ dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
 
 
 # PCA
+
+```{r}
+data.pca <- adhd.complete
+
+res.pca <- prcomp(data.pca, scale = TRUE)
+```
+
+```{r}
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+#res.var$coord          # Coordinates
+res.var$contrib[,1:5]        # Contributions to the PCs
+```
+
+
+```{r}
+fviz_eig(res.pca)
+```
+
+```{r}
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+```{r}
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
 
 
 
