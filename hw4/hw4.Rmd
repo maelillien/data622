@@ -19,6 +19,14 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# ADHD Dataset
+
+This dataset is a compilation of demographic, abuse, drug use, ADHD and mood disorder variarables, where the latter two include individual responses to the these questionnaires: [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf), [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf). The rows represent real patient responses. 
+
+The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data.
+
+The first part of this work will make use of unsupervised learning techniques such as Principal Component Analysis (PCA) and clustering. The second part will explore support vector machines in a supervised learning exercised to predict whether an individual has attempted suicide.
+
 ## Setup
 
 ```{r message=FALSE, warning=FALSE}
@@ -32,12 +40,9 @@ library(VIM) # For missing data visualization
 library(gridExtra) # For grid plots
 library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
-library(dendextend)
-library(factoextra)
+library(dendextend) # For dendrograms
+library(factoextra) # For PCA plots
 ```
-
-
-# ADHD Dataset
 
 ```{r}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
@@ -58,6 +63,8 @@ skim(adhd)
 
 Variables need to be numeric, computations based on distance.
 
+We work with a multiple subsets of the data throughout this report. The following uses only the sums of the questionnaires in order to reduce the number of variables.
+
 ```{r}
 # Selecting only variables not containing Qs
 adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
@@ -68,17 +75,9 @@ adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sed
 # shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
 
-
-```
-
-```{r}
-#adhd <- data.frame(lapply(adhd,as.numeric))
 adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
+
 ```
-
-
-
-
 
 
 #### Imputation of Missing Values
