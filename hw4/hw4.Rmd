@@ -19,14 +19,6 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# ADHD Dataset
-
-This dataset is a compilation of demographic, abuse, drug use, ADHD and mood disorder variarables, where the latter two include individual responses to the these questionnaires: [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf), [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf). The rows represent real patient responses. 
-
-The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data.
-
-The first part of this work will make use of unsupervised learning techniques such as Principal Component Analysis (PCA) and clustering. The second part will explore support vector machines in a supervised learning exercised to predict whether an individual has attempted suicide.
-
 ## Setup
 
 ```{r message=FALSE, warning=FALSE}
@@ -40,9 +32,13 @@ library(VIM) # For missing data visualization
 library(gridExtra) # For grid plots
 library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
-library(dendextend) # For dendrograms
-library(factoextra) # For PCA plots
+library(dendextend)
+library(factoextra)
+library(e1071)
 ```
+
+
+# ADHD Dataset
 
 ```{r}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
@@ -63,21 +59,24 @@ skim(adhd)
 
 Variables need to be numeric, computations based on distance.
 
-We work with a multiple subsets of the data throughout this report. The following uses only the sums of the questionnaires in order to reduce the number of variables.
-
 ```{r}
 # Selecting only variables not containing Qs
 adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
-
 # shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
-
-adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
-
 ```
+
+```{r}
+#adhd <- data.frame(lapply(adhd,as.numeric))
+adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
+```
+
+
+
+
 
 
 #### Imputation of Missing Values
@@ -94,7 +93,6 @@ dim(adhd)
 ```{r}
 # Discard PsychMeds
 adhd.complete <- adhd %>% select(-c(PsychMeds))
-
 # Keep only complete cases
 adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
 ```
@@ -117,7 +115,6 @@ adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1 | adhd.complete$Abus
 adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
 adhd.complete$AbuseE <- as.numeric(adhd.complete$Abuse == 3 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
 adhd.complete <- adhd.complete %>% select(-c(Abuse))
-
 ```
 
 ```{r}
@@ -137,7 +134,6 @@ adhd.scaled <- scale(adhd.complete)
 ```{r}
 # Dissimilarity matrix
 d <- dist(adhd.scaled, method = "euclidean")
-
 # Hierarchical clustering using Complete Linkage
 hc1 <- hclust(d, method = "complete" )
 ```
@@ -175,7 +171,6 @@ dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 dend <- adhd.complete %>%  scale %>% 
         dist %>% hclust(method = "average") %>% as.dendrogram
 dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
-
 ```
 
 
@@ -183,7 +178,6 @@ dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
 
 ```{r}
 data.pca <- adhd.complete
-
 res.pca <- prcomp(data.pca, scale = TRUE)
 ```
 
@@ -242,6 +236,93 @@ res.var$contrib[,1:4]        # Contributions to the PCs
 
 
 # SVM
+## SVM - Via Dataset
+```{r}
+adhd.complete2 <- adhd.complete
+adhd.complete2$Suicide <- as.factor(adhd.complete2$Suicide)
 
+set.seed(55)
+trainIndex <- createDataPartition(adhd.complete2$Suicide, p = .8, list = FALSE, times = 1)
+adhd.training <- adhd.complete2[ trainIndex,]
+adhd.testing  <- adhd.complete2[-trainIndex,]
+```
+
+```{r}
+svm_m <- tune(svm, Suicide ~., data = adhd.training, ranges=list(
+  kernel=c("linear", "polynomial", "radial", "sigmoid"),
+  cost=2^(2:8),
+  epsilon = seq(0,1,0.1)))
+
+svm_m$best.parameters
+1-svm_m$best.performance
+```
+
+```{r}
+svm_m_best <- svm_m$best.model
+svm_pred <- predict(svm_m_best, newdata = adhd.testing, type="class")
+svm_cm <- confusionMatrix(svm_pred, adhd.testing$Suicide)
+svm_cm$table
+sum(diag(svm_cm$table))/sum(svm_cm$table)
+```
+## SVM - Via PCA
+```{r}
+adhd_raw2 <- adhd_raw %>% select(-MD.TOTAL, -ADHD.Total, -Initial, -Psych.meds.)
+adhd_raw2 <- adhd_raw2[complete.cases(adhd_raw2), ]
+adhd_raw2$Suicide <- as.factor(adhd_raw2$Suicide)
+set.seed(55)
+trainIndex <- createDataPartition(adhd_raw2$Suicide, p = .8, list = FALSE, times = 1)
+adhd_pca.training <- adhd_raw2[ trainIndex,]
+adhd_pca.testing  <- adhd_raw2[-trainIndex,]
+```
+
+```{r}
+svm_pca_m <- prcomp(select(adhd_pca.training, -Suicide), center = TRUE, scale = TRUE)
+summary(svm_pca_m)
+```
+```{r}
+fviz_eig(svm_pca_m, addlabels = T)
+
+#check for normality and outliers, since we scaled the the original features, the qqplot should be normal as well
+qqnorm(svm_pca_m[["x"]][,1])
+```
+```{r}
+fviz_pca_ind(svm_pca_m, label="none", 
+             habillage = adhd_pca.training$Suicide,
+             addEllipses = TRUE, palette = "jco")
+```
+```{r}
+#Kaiser rule: select PCs with eigenvalues of at least 1
+reduced_dim <- get_eigenvalue(svm_pca_m) %>% filter(eigenvalue > 1)
+reduced_dim
+```
+```{r}
+
+adhd_pca.training_reduced <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim))]), Suicide = adhd_pca.training$Suicide)
+head(adhd_pca.training_reduced)
+
+```
+```{r}
+#rotate the test data using the predict function in the same rotation as the training data
+# rotation done with PC that have eigenvalue < 1 dropped
+adhd_pca.testing_reduced <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim))]),Suicide = adhd_pca.testing$Suicide)
+head(adhd_pca.testing_reduced)
+```
+```{r}
+svm_pca_m <- tune(svm, Suicide ~., data = adhd_pca.training_reduced, ranges=list(
+  kernel=c("linear", "polynomial", "radial", "sigmoid"),
+  cost=2^(2:8),
+  epsilon = seq(0,1,0.1)))
+
+svm_pca_m$best.parameters
+1-svm_pca_m$best.performance
+```
+
+```{r}
+svm_pca_m_best <- svm_pca_m$best.model
+svm_pca_pred <- predict(svm_pca_m_best, newdata = adhd_pca.testing_reduced, type="class")
+svm_pca_cm <- confusionMatrix(svm_pca_pred, adhd_pca.testing_reduced$Suicide)
+svm_pca_cm$table
+sum(diag(svm_pca_cm$table))/sum(svm_pca_cm$table)
+```
 
 
