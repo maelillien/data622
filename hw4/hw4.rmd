@@ -123,6 +123,9 @@ Elaborate on similary.
 2. Clustering based on total questionnaire scores and demographic variables scaled
 3. Clustering based on total questionnaire scores and demographic variables not scaled
 
+#fviz_dend(res.hk, cex = 0.6, palette = "jco", 
+#          rect = TRUE, rect_border = "jco", rect_fill = TRUE)
+
 ### Clustering based on individual questionnaire not scaled
 
 1. Dendrogram
@@ -238,6 +241,36 @@ adhd.complete %>%
 
 # PCA
 
+PCA is a dimensionality reduction technique in the sense that a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.
+
+The method seeks to project the data into a lower dimensional space where each axis (or principal component) captures the most variability in the data subject to the condition of being uncorrelated to the other axes. This last condition is important for dimensionality reduction in the sense that large datasets can contain many correlated variables which hold no additional information.
+
+get_eigenvalue(res.pca): Extract the eigenvalues/variances of principal components
+fviz_eig(res.pca): Visualize the eigenvalues
+get_pca_ind(res.pca), get_pca_var(res.pca): Extract the results for individuals and variables, respectively.
+fviz_pca_ind(res.pca), fviz_pca_var(res.pca): Visualize the results individuals and variables, respectively.
+fviz_pca_biplot(res.pca): Make a biplot of individuals and variables.
+
+An eigenvalue > 1 indicates that PCs account for more variance than accounted by one of the original variables in standardized data. This is commonly used as a cutoff point for which PCs are retained. This holds true only when the data are standardized.
+
+You can also limit the number of component to that number that accounts for a certain fraction of the total variance. For example, if you are satisfied with 70% of the total variance explained then use the number of components to achieve that.
+
+http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/
+
+1. PCA with questionnaire responses only (not scaled)
+
+  Contributions, Scree
+
+  a. ADHD
+
+  b. MD
+
+2. PCA with score totals and demographics
+
+  Eigenvectors and variable plot, Scree
+
+
+
 ```{r}
 data.pca <- adhd.complete
 res.pca <- prcomp(data.pca, scale = TRUE)
@@ -252,7 +285,7 @@ res.var$contrib[,1:5]        # Contributions to the PCs
 
 
 ```{r}
-fviz_eig(res.pca)
+fviz_eig(res.pca, addlabels = TRUE)
 ```
 
 ```{r}
@@ -262,6 +295,12 @@ fviz_pca_ind(res.pca,
              repel = TRUE     # Avoid text overlapping
              )
 ```
+
+Variable correlation plot and quality of representation/contribution
+
+Positively correlated variables are grouped together.
+Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
+The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map.
 
 ```{r}
 fviz_pca_var(res.pca,
@@ -279,7 +318,7 @@ pca_data.md <- adhd_raw %>% select(MD.Q1a:MD.Q3)
 ```{r}
 res.pca.adhd <- prcomp(pca_data.adhd, scale = FALSE)
 res.var <- get_pca_var(res.pca.adhd)
-fviz_eig(res.pca.adhd)
+fviz_eig(res.pca.adhd, addlabels = TRUE)
 ```
 
 ```{r}
@@ -289,7 +328,7 @@ res.var$contrib[,1:3]        # Contributions to the PCs
 ```{r}
 res.pca.md <- prcomp(pca_data.md, scale = FALSE)
 res.var <- get_pca_var(res.pca.md)
-fviz_eig(res.pca.md)
+fviz_eig(res.pca.md, addlabels = TRUE)
 ```
 
 ```{r}
