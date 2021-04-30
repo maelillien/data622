@@ -32,20 +32,25 @@ library(VIM) # For missing data visualization
 library(gridExtra) # For grid plots
 library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
-library(dendextend)
-library(factoextra)
+library(dendextend) # For dendrograms
+library(factoextra) # For PCA plots
 library(e1071)
 ```
 
 
 # ADHD Dataset
 
+This dataset is a compilation of demographic, abuse, drug use, ADHD and mood disorder variarables, where the latter two include individual responses to the these questionnaires: [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf), [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf). The rows represent real patient responses. 
+
+The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data.
+
+The first part of this work will make use of unsupervised learning techniques such as Principal Component Analysis (PCA) and clustering. The second part will explore support vector machines in a supervised learning exercised to predict whether an individual has attempted suicide.
+
+
+
 ```{r}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
 adhd <- adhd_raw
-```
-
-```{r}
 head(adhd)
 ```
 
@@ -57,7 +62,7 @@ skim(adhd)
 
 ## Data Pre-processing
 
-Variables need to be numeric, computations based on distance.
+We work with a multiple subsets of the data throughout this report. The following uses only the sums of the questionnaires in order to reduce the number of variables.
 
 ```{r}
 # Selecting only variables not containing Qs
@@ -67,26 +72,17 @@ adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sed
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
 # shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
-```
 
-```{r}
-#adhd <- data.frame(lapply(adhd,as.numeric))
+# Set all characters to numeric
 adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
 ```
 
+#### Missing Values
 
-
-
-
-
-#### Imputation of Missing Values
+The dataset contains a few missing values. The PsychMeds variable mostly contained missing values and was dropped entirely. A few observations were quite sparse and only contained basic demographic and questionnaire score columns. In order to avoid biasing the dataset with imputed values, we preferred to drop all observations with missing values from the dataset. The resulting dataset contains 33 fewer observations with 142 complete rows and 19 columns.
 
 ```{r}
 mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
-```
-
-```{r}
-dim(adhd)
 ```
 
 
@@ -97,19 +93,17 @@ adhd.complete <- adhd %>% select(-c(PsychMeds))
 adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
 ```
 
-```{r}
-dim(adhd.complete)
-```
-
 ## Data Exploration
 
 
 
 ## Data Processing
 
+The dataset is modified to include an `EducationLevel` categorical variable derived from the numerical `Education` variables representing the years of schooling. The `Abuse` column is unfolded into 3 binary variables indicating the occurence of the 3 types of abuse. The original abuse variable is dropped.
+
 ```{r}
 # Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
-adhd.complete$Education <- ifelse(adhd.complete$Education <= 8, 1, ifelse(adhd.complete$Education <= 12 & adhd.complete$Education > 8, 2, ifelse(adhd.complete$Education > 12, 3, 99)))
+adhd.complete$EducationLevel <- ifelse(adhd.complete$Education <= 8, 1, ifelse(adhd.complete$Education <= 12 & adhd.complete$Education > 8, 2, ifelse(adhd.complete$Education > 12, 3, 99)))
 # Creating new variables based on type of abuse
 adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 7)
 adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
@@ -136,27 +130,60 @@ adhd.scaled <- scale(adhd.complete)
 d <- dist(adhd.scaled, method = "euclidean")
 # Hierarchical clustering using Complete Linkage
 hc1 <- hclust(d, method = "complete" )
+sub_grp1 <- cutree(hc1, k = 6)
+table(sub_grp1)
 ```
 
 ```{r}
-sub_grp <- cutree(hc1, k = 6)
-table(sub_grp)
+# Dissimilarity matrix
+d <- dist(adhd.complete, method = "euclidean")
+# Hierarchical clustering using Complete Linkage
+hc2 <- hclust(d, method = "complete" )
+sub_grp2 <- cutree(hc2, k = 5)
+table(sub_grp2)
 ```
+
+```{r}
+# Dissimilarity matrix
+d <- dist(adhd.complete, method = "euclidean")
+# Hierarchical clustering using Complete Linkage
+hc3 <- hclust(d, method = "complete" )
+sub_grp3 <- cutree(hc3, k = 3)
+table(sub_grp3)
+```
+
 
 ```{r}
 adhd.complete %>%
-  mutate(cluster = sub_grp) %>%
-  head
-```
-
-```{r}
-adhd.complete %>%
-  mutate(cluster = sub_grp) %>%
+  mutate(cluster = sub_grp1) %>%
   group_by(cluster) %>%
   summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
 ```
 
+```{r}
+adhd.complete %>%
+  mutate(cluster = sub_grp1) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
+  gather(var,value,meanAge:count) %>%
+  ggplot(aes(cluster,value)) + geom_col() + facet_grid(var ~ .) 
+```
 
+
+
+```{r}
+adhd.complete %>%
+  mutate(cluster = sub_grp2) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
+```
+
+```{r}
+adhd.complete %>%
+  mutate(cluster = sub_grp3) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
+```
 
 ```{r, fig.width = 12}
 dend <- adhd.complete %>%  scale %>% 
@@ -164,15 +191,25 @@ dend <- adhd.complete %>%  scale %>%
 dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 ```
 
+```{r, fig.width = 12}
+dend <- adhd.complete %>% 
+        dist %>% hclust %>% as.dendrogram
+dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
+```
 
 
 
 ```{r, fig.width = 12}
 dend <- adhd.complete %>%  scale %>% 
         dist %>% hclust(method = "average") %>% as.dendrogram
-dend %>% set("branches_k_color", k = 10) %>% plot(main = "HC")
+dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 ```
 
+```{r, fig.width = 12}
+dend <- adhd.complete %>% 
+        dist %>% hclust(method = "average") %>% as.dendrogram
+dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
+```
 
 # PCA
 
