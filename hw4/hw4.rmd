@@ -60,21 +60,30 @@ skim(adhd)
 ```
 
 
-## Data Pre-processing
+## Data Processing
 
-We work with a multiple subsets of the data throughout this report. The following uses only the sums of the questionnaires in order to reduce the number of variables.
+The dataset is modified to include an `EducationLevel` categorical variable derived from the numerical `Education` variables representing the years of schooling. The `Abuse` column is unfolded into 3 binary variables indicating the occurence of the 3 types of abuse. The original `Abuse` variable is dropped.
+
+We work with a multiple subsets of the data for subsequent parts this report. Some analyses make use of the entire set of questionnaire reponses while others use only the total score. 
 
 ```{r}
 # Selecting only variables not containing Qs
-adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
+# adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
+
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
 # shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
-
 # Set all characters to numeric
 adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
+# Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
+adhd$EducationLevel <- ifelse(adhd$Education <= 8, 1, ifelse(adhd$Education <= 12 & adhd$Education > 8, 2, ifelse(adhd$Education > 12, 3, 99)))
+# Creating new variables based on type of abuse
+adhd$AbuseP <- as.numeric(adhd$Abuse == 1 | adhd$Abuse == 4 | adhd$Abuse == 5 | adhd$Abuse == 7)
+adhd$AbuseS <- as.numeric(adhd$Abuse == 2 | adhd$Abuse == 4 | adhd$Abuse == 6 | adhd$Abuse == 7)
+adhd$AbuseE <- as.numeric(adhd$Abuse == 3 | adhd$Abuse == 5 | adhd$Abuse == 6 | adhd$Abuse == 7)
+adhd <- adhd %>% select(-c(Abuse))
 ```
 
 #### Missing Values
@@ -84,7 +93,6 @@ The dataset contains a few missing values. The PsychMeds variable mostly contain
 ```{r}
 mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
 ```
-
 
 ```{r}
 # Discard PsychMeds
@@ -97,25 +105,6 @@ adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
 
 
 
-## Data Processing
-
-The dataset is modified to include an `EducationLevel` categorical variable derived from the numerical `Education` variables representing the years of schooling. The `Abuse` column is unfolded into 3 binary variables indicating the occurence of the 3 types of abuse. The original abuse variable is dropped.
-
-```{r}
-# Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
-adhd.complete$EducationLevel <- ifelse(adhd.complete$Education <= 8, 1, ifelse(adhd.complete$Education <= 12 & adhd.complete$Education > 8, 2, ifelse(adhd.complete$Education > 12, 3, 99)))
-# Creating new variables based on type of abuse
-adhd.complete$AbuseP <- as.numeric(adhd.complete$Abuse == 1 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 7)
-adhd.complete$AbuseS <- as.numeric(adhd.complete$Abuse == 2 | adhd.complete$Abuse == 4 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
-adhd.complete$AbuseE <- as.numeric(adhd.complete$Abuse == 3 | adhd.complete$Abuse == 5 | adhd.complete$Abuse == 6 | adhd.complete$Abuse == 7)
-adhd.complete <- adhd.complete %>% select(-c(Abuse))
-```
-
-```{r}
-head(adhd.complete)
-```
-
-
 Data must be scaled
 
 ```{r}
@@ -124,6 +113,41 @@ adhd.scaled <- scale(adhd.complete)
 
 
 # Clustering
+
+Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches as K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is bottom-up or agglomerative clustering approach which results in am upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
+
+Elaborate on similary.
+
+
+1. Clustering based on individual questionnaire not scaled
+2. Clustering based on total questionnaire scores and demographic variables scaled
+3. Clustering based on total questionnaire scores and demographic variables not scaled
+
+### Clustering based on individual questionnaire not scaled
+
+1. Dendrogram
+2. Cluster summary statistics
+
+```{r}
+hc0 <- adhd.complete %>% scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
+sub_grp0 <- cutree(hc1, k = 6)
+table(sub_grp0)
+```
+
+### Clustering based on total questionnaire scores and demographic variables scaled
+
+HC, Scaled, Complete and Average Linkage, k=6
+
+```{r, fig.width = 12}
+dend <- adhd.complete %>%  scale %>% 
+        dist %>% hclust %>% as.dendrogram
+dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
+```
+
+```{r, fig.width = 12}
+dend <- adhd.complete %>%  scale %>% 
+        dist %>% hclust(method = "average") %>% as.dendrogram
+dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
 
 ```{r}
 # Dissimilarity matrix
@@ -135,23 +159,10 @@ table(sub_grp1)
 ```
 
 ```{r}
-# Dissimilarity matrix
-d <- dist(adhd.complete, method = "euclidean")
-# Hierarchical clustering using Complete Linkage
-hc2 <- hclust(d, method = "complete" )
-sub_grp2 <- cutree(hc2, k = 5)
-table(sub_grp2)
+hc1 <- adhd.complete %>% scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
+sub_grp1 <- cutree(hc1, k = 6)
+table(sub_grp1)
 ```
-
-```{r}
-# Dissimilarity matrix
-d <- dist(adhd.complete, method = "euclidean")
-# Hierarchical clustering using Complete Linkage
-hc3 <- hclust(d, method = "complete" )
-sub_grp3 <- cutree(hc3, k = 3)
-table(sub_grp3)
-```
-
 
 ```{r}
 adhd.complete %>%
@@ -169,7 +180,36 @@ adhd.complete %>%
   ggplot(aes(cluster,value)) + geom_col() + facet_grid(var ~ .) 
 ```
 
+### Clustering based on total questionnaire scores and demographic variables not scaled
 
+HC, Complete Linkage, k=5
+
+```{r, fig.width = 12}
+dend <- adhd.complete %>% 
+        dist %>% hclust %>% as.dendrogram
+dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
+```
+
+```{r, fig.width = 12}
+dend <- adhd.complete %>% 
+        dist %>% hclust(method = "average") %>% as.dendrogram
+dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
+```
+
+```{r}
+# Dissimilarity matrix
+d <- dist(adhd.complete, method = "euclidean")
+# Hierarchical clustering using Complete Linkage
+hc2 <- hclust(d, method = "complete" )
+sub_grp2 <- cutree(hc2, k = 5)
+table(sub_grp2)
+```
+
+```{r}
+hc2 <- adhd.complete %>% dist(method = "euclidean") %>% hclust(method = "complete")
+sub_grp2 <- cutree(hc2, k = 5)
+table(sub_grp2)
+```
 
 ```{r}
 adhd.complete %>%
@@ -178,37 +218,22 @@ adhd.complete %>%
   summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
 ```
 
+HC, Complete Linkage, k=3
+
+```{r}
+# Dissimilarity matrix
+d <- dist(adhd.complete, method = "euclidean")
+# Hierarchical clustering using Complete Linkage
+hc3 <- hclust(d, method = "complete" )
+sub_grp3 <- cutree(hc3, k = 3)
+table(sub_grp3)
+```
+
 ```{r}
 adhd.complete %>%
   mutate(cluster = sub_grp3) %>%
   group_by(cluster) %>%
   summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
-```
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>%  scale %>% 
-        dist %>% hclust %>% as.dendrogram
-dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
-```
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>% 
-        dist %>% hclust %>% as.dendrogram
-dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
-```
-
-
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>%  scale %>% 
-        dist %>% hclust(method = "average") %>% as.dendrogram
-dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
-```
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>% 
-        dist %>% hclust(method = "average") %>% as.dendrogram
-dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
 ```
 
 # PCA
