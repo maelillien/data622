@@ -67,16 +67,11 @@ The dataset is modified to include an `EducationLevel` categorical variable deri
 We work with a multiple subsets of the data for subsequent parts this report. Some analyses make use of the entire set of questionnaire reponses while others use only the total score. 
 
 ```{r}
-# Selecting only variables not containing Qs
-# adhd <- adhd %>% select(c(Age, Sex, Race, ADHD.Total, MD.TOTAL, Alcohol:Psych.meds.))
-
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
-# shift sex variable to 0 and 1
+# Shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
-# Set all characters to numeric
-adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
 # Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
 adhd$EducationLevel <- ifelse(adhd$Education <= 8, 1, ifelse(adhd$Education <= 12 & adhd$Education > 8, 2, ifelse(adhd$Education > 12, 3, 99)))
 # Creating new variables based on type of abuse
@@ -84,6 +79,13 @@ adhd$AbuseP <- as.numeric(adhd$Abuse == 1 | adhd$Abuse == 4 | adhd$Abuse == 5 | 
 adhd$AbuseS <- as.numeric(adhd$Abuse == 2 | adhd$Abuse == 4 | adhd$Abuse == 6 | adhd$Abuse == 7)
 adhd$AbuseE <- as.numeric(adhd$Abuse == 3 | adhd$Abuse == 5 | adhd$Abuse == 6 | adhd$Abuse == 7)
 adhd <- adhd %>% select(-c(Abuse))
+
+# Selecting only variables not containing Qs
+adhd.full <- adhd
+adhd <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:PsychMeds))
+
+# Set all characters to numeric
+adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
 ```
 
 #### Missing Values
@@ -126,120 +128,79 @@ Elaborate on similary.
 #fviz_dend(res.hk, cex = 0.6, palette = "jco", 
 #          rect = TRUE, rect_border = "jco", rect_fill = TRUE)
 
-### Clustering based on individual questionnaire not scaled
+### ADHD Questionnaire
 
-1. Dendrogram
-2. Cluster summary statistics
 
-```{r}
-hc0 <- adhd.complete %>% scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
-sub_grp0 <- cutree(hc1, k = 6)
-table(sub_grp0)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
+dend0 <- hc0 %>% as.dendrogram
+dend0 %>% set("branches_k_color", k = 4) %>% set("labels", "") %>% plot(main = "HC ADHD Questionnaire")
+sub_grp0 <- cutree(hc0, k = 4)
 ```
 
-### Clustering based on total questionnaire scores and demographic variables scaled
-
-HC, Scaled, Complete and Average Linkage, k=6
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>%  scale %>% 
-        dist %>% hclust %>% as.dendrogram
-dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
-```
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>%  scale %>% 
-        dist %>% hclust(method = "average") %>% as.dendrogram
-dend %>% set("branches_k_color", k = 6) %>% plot(main = "HC")
-
-```{r}
-# Dissimilarity matrix
-d <- dist(adhd.scaled, method = "euclidean")
-# Hierarchical clustering using Complete Linkage
-hc1 <- hclust(d, method = "complete" )
-sub_grp1 <- cutree(hc1, k = 6)
-table(sub_grp1)
-```
-
-```{r}
-hc1 <- adhd.complete %>% scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
-sub_grp1 <- cutree(hc1, k = 6)
-table(sub_grp1)
-```
-
-```{r}
-adhd.complete %>%
-  mutate(cluster = sub_grp1) %>%
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+adhd.full %>%
+  mutate(cluster = sub_grp0) %>%
   group_by(cluster) %>%
-  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
+  gather(var,value,meanAge:count) %>%
+  ggplot(aes(cluster,value,fill=cluster)) + 
+  geom_col() + facet_grid(var ~ ., scales="free_y") +
+  ggtitle('ADHD Questionnaire Cluster Distribution')  +
+  theme_minimal()
 ```
 
-```{r}
+
+
+### Complete Dataset
+
+HC, Scaled, Complete Linkage, k=6
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+hc1 <- adhd.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
+dend1 <- hc1 %>% as.dendrogram
+dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "HC Scaled Variables Totals only")
+
+sub_grp1 <- cutree(hc1, k = 6)
+```
+
+```{r message=FALSE, warning=FALSE}
 adhd.complete %>%
   mutate(cluster = sub_grp1) %>%
   group_by(cluster) %>%
   summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
   gather(var,value,meanAge:count) %>%
-  ggplot(aes(cluster,value)) + geom_col() + facet_grid(var ~ .) 
+  ggplot(aes(cluster,value,fill=cluster)) + 
+  geom_col() + facet_grid(var ~ ., scales="free_y") +
+  ggtitle('ADHD Questionnaire Cluster Distribution') +
+  theme_minimal()
 ```
 
-### Clustering based on total questionnaire scores and demographic variables not scaled
+### Comparison
 
-HC, Complete Linkage, k=5
-
-```{r, fig.width = 12}
-dend <- adhd.complete %>% 
-        dist %>% hclust %>% as.dendrogram
-dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dl <- dendlist(
+  dend0 %>% 
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=4) %>%
+    set("branches_lty", 1) %>%
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 4),
+  dend1 %>% 
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
+    set("branches_lty", 1) %>%
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6)
+)
+ 
+# Plot them together
+tanglegram(dl, 
+           common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE, 
+           margin_inner=7,
+           lwd=2
+)
 ```
 
-```{r, fig.width = 12}
-dend <- adhd.complete %>% 
-        dist %>% hclust(method = "average") %>% as.dendrogram
-dend %>% set("branches_k_color", k = 5) %>% plot(main = "HC")
-```
 
-```{r}
-# Dissimilarity matrix
-d <- dist(adhd.complete, method = "euclidean")
-# Hierarchical clustering using Complete Linkage
-hc2 <- hclust(d, method = "complete" )
-sub_grp2 <- cutree(hc2, k = 5)
-table(sub_grp2)
-```
 
-```{r}
-hc2 <- adhd.complete %>% dist(method = "euclidean") %>% hclust(method = "complete")
-sub_grp2 <- cutree(hc2, k = 5)
-table(sub_grp2)
-```
-
-```{r}
-adhd.complete %>%
-  mutate(cluster = sub_grp2) %>%
-  group_by(cluster) %>%
-  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
-```
-
-HC, Complete Linkage, k=3
-
-```{r}
-# Dissimilarity matrix
-d <- dist(adhd.complete, method = "euclidean")
-# Hierarchical clustering using Complete Linkage
-hc3 <- hclust(d, method = "complete" )
-sub_grp3 <- cutree(hc3, k = 3)
-table(sub_grp3)
-```
-
-```{r}
-adhd.complete %>%
-  mutate(cluster = sub_grp3) %>%
-  group_by(cluster) %>%
-  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n())
-```
-
-# PCA
+# Principal Component Analysis
 
 PCA is a dimensionality reduction technique in the sense that a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.
 
@@ -270,6 +231,33 @@ http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practi
   Eigenvectors and variable plot, Scree
 
 
+### ADHD Questionnaire
+
+
+```{r}
+pca_data.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18)
+res.pca.adhd <- prcomp(pca_data.adhd, scale = FALSE)
+res.var <- get_pca_var(res.pca.adhd)
+fviz_eig(res.pca.adhd, addlabels = TRUE)
+```
+
+```{r}
+fviz_pca_var(res.pca.adhd,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+```{r}
+# Contributions of variables to PC1
+fviz_contrib(res.pca.adhd, choice = "var", axes = 1, top = 10)
+# Contributions of variables to PC2
+fviz_contrib(res.pca.adhd, choice = "var", axes = 2, top = 10)
+```
+
+
+### Complete Dataset
 
 ```{r}
 data.pca <- adhd.complete
@@ -283,18 +271,16 @@ res.var <- get_pca_var(res.pca)
 res.var$contrib[,1:5]        # Contributions to the PCs
 ```
 
+```{r}
+fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)
+fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
+```
+
 
 ```{r}
 fviz_eig(res.pca, addlabels = TRUE)
 ```
 
-```{r}
-fviz_pca_ind(res.pca,
-             col.ind = "cos2", # Color by the quality of representation
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE     # Avoid text overlapping
-             )
-```
 
 Variable correlation plot and quality of representation/contribution
 
@@ -310,30 +296,6 @@ fviz_pca_var(res.pca,
              )
 ```
 
-```{r}
-pca_data.adhd <- adhd_raw %>% select(ADHD.Q1:ADHD.Q18)
-pca_data.md <- adhd_raw %>% select(MD.Q1a:MD.Q3)
-```
-
-```{r}
-res.pca.adhd <- prcomp(pca_data.adhd, scale = FALSE)
-res.var <- get_pca_var(res.pca.adhd)
-fviz_eig(res.pca.adhd, addlabels = TRUE)
-```
-
-```{r}
-res.var$contrib[,1:3]        # Contributions to the PCs
-```
-
-```{r}
-res.pca.md <- prcomp(pca_data.md, scale = FALSE)
-res.var <- get_pca_var(res.pca.md)
-fviz_eig(res.pca.md, addlabels = TRUE)
-```
-
-```{r}
-res.var$contrib[,1:4]        # Contributions to the PCs
-```
 
 
 # SVM
