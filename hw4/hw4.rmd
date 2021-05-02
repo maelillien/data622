@@ -34,29 +34,32 @@ library(pROC) # For AUC calculations
 library(ROCR) # For ROC and AUC plots
 library(dendextend) # For dendrograms
 library(factoextra) # For PCA plots
-library(e1071)
+library(e1071) # For SVM
 ```
 
 
 # ADHD Dataset
 
-This dataset is a compilation of demographic, abuse, drug use, ADHD and mood disorder variarables, where the latter two include individual responses to the these questionnaires: [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf), [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf). The rows represent real patient responses. 
+This dataset is composed of real patient responses to two questionnaires related to ADHD and Mood Disorder and a variety of demographic, abuse, drug use variarables. For each questionnaire, the responses to individual questions are provided along with total scores. Links to the actual questions are provided below:
 
-The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data.
+  - [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf)
+  - [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf)
 
-The first part of this work will make use of unsupervised learning techniques such as Principal Component Analysis (PCA) and clustering. The second part will explore support vector machines in a supervised learning exercised to predict whether an individual has attempted suicide.
+The first part of this work will make use of unsupervised learning techniques such as Principal Component Analysis (PCA) and clustering in an attempt to discover structures in the data. The second part will explore support vector machines in a supervised learning exercise to predict whether an individual has attempted suicide.
 
+# Data
 
+The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data. A summary of the variable distributions is provided below:
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
 adhd <- adhd_raw
 head(adhd)
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd[adhd==''] <- NA 
-skim(adhd)
+skim(adhd %>% select(-c(ADHD.Q1:ADHD.Q18, MD.Q1a:MD.Q3)))
 ```
 
 
@@ -66,7 +69,7 @@ The dataset is modified to include an `EducationLevel` categorical variable deri
 
 We work with a multiple subsets of the data for subsequent parts this report. Some analyses make use of the entire set of questionnaire reponses while others use only the total score. 
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
@@ -92,19 +95,19 @@ adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
 
 The dataset contains a few missing values. The PsychMeds variable mostly contained missing values and was dropped entirely. A few observations were quite sparse and only contained basic demographic and questionnaire score columns. In order to avoid biasing the dataset with imputed values, we preferred to drop all observations with missing values from the dataset. The resulting dataset contains 33 fewer observations with 142 complete rows and 19 columns.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 # Discard PsychMeds
 adhd.complete <- adhd %>% select(-c(PsychMeds))
 # Keep only complete cases
 adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
+adhd.full.complete <- adhd.full[complete.cases(adhd.full),]
 ```
 
 ## Data Exploration
-
 
 
 Data must be scaled
@@ -116,27 +119,36 @@ adhd.scaled <- scale(adhd.complete)
 
 # Clustering
 
-Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches as K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is bottom-up or agglomerative clustering approach which results in am upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
+Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches are K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is bottom-up or agglomerative clustering approach which results in am upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
+
+In this section, we explore the use of Hierarchical Clustering on two portions of the data. The first uses only the questionnaire responses to ADHD while the second uses the total questionnaire scores for both survey as well as the other variables (demographic, drugs, abuse, etc).
+
+Clustering typically requires the variables to be scaled in order to avoid more weight to variables using a larger range of values. However, when all the variables under conideration are measured on the same scale, which is the case when only comparing survey responses, it can be appropriate to leave the variables unscaled.
 
 Elaborate on similary.
 
-
-1. Clustering based on individual questionnaire not scaled
-2. Clustering based on total questionnaire scores and demographic variables scaled
-3. Clustering based on total questionnaire scores and demographic variables not scaled
-
-#fviz_dend(res.hk, cex = 0.6, palette = "jco", 
-#          rect = TRUE, rect_border = "jco", rect_fill = TRUE)
+With HC, the concept of dissimilarity between a pair of observations needs to be extended to a pair of groups of observations. This extension is achieved with the notion of linkage, which defines the dissimilarity between two groups of observations. The resulting dendrogram heavily depends on the choice of linkage. The most popular linkages are complete and average because they tend to result in more balanced clusters. 
 
 ### ADHD Questionnaire
+
+Using only the individual unscaled responses to the ADHD Questionnaire, we obtain the following dendrogram structure using complete linkage. In this case, complete linkage provided the best balancing and a cutoff into 3 clusters looked appropriate. In order to gain insight into these clusters, we need to look at the distribution of the variables within each of them. 
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend0 <- hc0 %>% as.dendrogram
-dend0 %>% set("branches_k_color", k = 4) %>% set("labels", "") %>% plot(main = "HC ADHD Questionnaire")
-sub_grp0 <- cutree(hc0, k = 4)
+dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
+sub_grp0 <- cutree(hc0, k = 3)
 ```
+
+For these 3 clusters, we can make the following observations:
+
+  - The clusters have very similar average age.
+  - The consistuents of cluster 3 have the lowest average ADHD and Mood Disorder total scores.
+  - Cluster 1 in on the other end of the spectrum and has the largest average lowest average ADHD and Mood Disorder total scores.
+  - Clusters 2 is the largest subgroup with scores falling in between clusters 1 and 3 
+  
+We can establish a ranking for this clustering based on the monotic rise in the meanADHD, meanAge and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd.full %>%
@@ -146,21 +158,28 @@ adhd.full %>%
   gather(var,value,meanAge:count) %>%
   ggplot(aes(cluster,value,fill=cluster)) + 
   geom_col() + facet_grid(var ~ ., scales="free_y") +
+  geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
   ggtitle('ADHD Questionnaire Cluster Distribution')  +
   theme_minimal()
 ```
 
-
-
 ### Complete Dataset
+
+For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. Using complete linkage, we obtained the following representation
 
 HC, Scaled, Complete Linkage, k=6
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 hc1 <- adhd.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend1 <- hc1 %>% as.dendrogram
-dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "HC Scaled Variables Totals only")
+dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
+sub_grp1 <- cutree(hc1, k = 6)
+```
 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+hc1 <- adhd.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
+dend1 <- hc1 %>% as.dendrogram
+dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
 sub_grp1 <- cutree(hc1, k = 6)
 ```
 
@@ -172,7 +191,8 @@ adhd.complete %>%
   gather(var,value,meanAge:count) %>%
   ggplot(aes(cluster,value,fill=cluster)) + 
   geom_col() + facet_grid(var ~ ., scales="free_y") +
-  ggtitle('ADHD Questionnaire Cluster Distribution') +
+  geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
+  ggtitle('Scaled Variables + Totals Cluster Distribution') +
   theme_minimal()
 ```
 
@@ -181,9 +201,9 @@ adhd.complete %>%
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 dl <- dendlist(
   dend0 %>% 
-    set("labels_col", value = c("skyblue", "orange", "grey"), k=4) %>%
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=3) %>%
     set("branches_lty", 1) %>%
-    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 4),
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 3),
   dend1 %>% 
     set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
     set("branches_lty", 1) %>%
@@ -194,7 +214,8 @@ dl <- dendlist(
 tanglegram(dl, 
            common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE, 
            margin_inner=7,
-           lwd=2
+           lwd=2,
+           show_labels = FALSE
 )
 ```
 
@@ -265,10 +286,7 @@ res.pca <- prcomp(data.pca, scale = TRUE)
 ```
 
 ```{r}
-# Results for Variables
-res.var <- get_pca_var(res.pca)
-#res.var$coord          # Coordinates
-res.var$contrib[,1:5]        # Contributions to the PCs
+fviz_eig(res.pca, addlabels = TRUE)
 ```
 
 ```{r}
@@ -277,9 +295,7 @@ fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
 ```
 
 
-```{r}
-fviz_eig(res.pca, addlabels = TRUE)
-```
+
 
 
 Variable correlation plot and quality of representation/contribution
