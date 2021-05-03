@@ -4,7 +4,7 @@ author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
 date: "4/12/2021"
 output: 
   html_document:
-    code_folding: show
+    code_folding: hide
     theme: cosmo
     highlight: tango
     toc: true
@@ -51,13 +51,13 @@ The first part of this work will make use of unsupervised learning techniques su
 
 The dataset is composed of 54 variables and 175 observations. The data is coded as `numeric` and holds 33 observations that have some level of missing data. A summary of the variable distributions is provided below:
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 adhd_raw <- read.csv('https://raw.githubusercontent.com/maelillien/data622/main/hw4/adhd_data.csv', header = TRUE)
 adhd <- adhd_raw
 head(adhd)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 adhd[adhd==''] <- NA 
 skim(adhd %>% select(-c(ADHD.Q1:ADHD.Q18, MD.Q1a:MD.Q3)))
 ```
@@ -69,7 +69,7 @@ The dataset is modified to include an `EducationLevel` categorical variable deri
 
 We work with a multiple subsets of the data for subsequent parts this report. Some analyses make use of the entire set of questionnaire reponses while others use only the total score. 
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
@@ -96,11 +96,11 @@ adhd.full <- mutate_all(adhd.full, function(x) as.numeric(as.character(x)))
 
 The dataset contains a few missing values. The PsychMeds variable mostly contained missing values and was dropped entirely. A few observations were quite sparse and only contained basic demographic and questionnaire score columns. In order to avoid biasing the dataset with imputed values, we preferred to drop all observations with missing values from the dataset. The resulting dataset contains 33 fewer observations with 142 complete rows and 19 columns.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-mice_plot <- aggr(adhd.red, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+```{r message=FALSE, warning=FALSE}
+mice_plot <- aggr(adhd.red, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd.red), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 # Discard PsychMeds
 adhd.red.complete <- adhd.red %>% select(-c(PsychMeds))
 adhd.full.complete <- adhd.full %>% select(-c(PsychMeds))
@@ -123,8 +123,6 @@ In this section, we explore the use of Hierarchical Clustering on two portions o
 
 Clustering typically requires the variables to be scaled in order to avoid more weight to variables using a larger range of values. However, when all the variables under conideration are measured on the same scale, which is the case when only comparing survey responses, it can be appropriate to leave the variables unscaled.
 
-Elaborate on similary.
-
 With HC, the concept of dissimilarity between a pair of observations needs to be extended to a pair of groups of observations. This extension is achieved with the notion of linkage, which defines the dissimilarity between two groups of observations. The resulting dendrogram heavily depends on the choice of linkage. The most popular linkages are complete and average because they tend to result in more balanced clusters. 
 
 ### ADHD Questionnaire
@@ -132,7 +130,7 @@ With HC, the concept of dissimilarity between a pair of observations needs to be
 Using only the individual unscaled responses to the ADHD Questionnaire, we obtain the following dendrogram structure using complete linkage. In this case, complete linkage provided the best balancing and a cutoff into 3 clusters looked appropriate. In order to gain insight into these clusters, we need to look at the distribution of the variables within each of them. 
 
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend0 <- hc0 %>% as.dendrogram
 dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
@@ -148,7 +146,7 @@ For these 3 clusters, we can make the following observations:
   
 We can establish a ranking for this clustering based on the monotic rise in the meanADHD, meanAge and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 adhd.full %>%
   mutate(cluster = sub_grp0) %>%
   group_by(cluster) %>%
@@ -161,20 +159,20 @@ adhd.full %>%
   theme_minimal()
 ```
 
-### Complete Dataset
+### Reduced Dataset
 
 For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. Using complete linkage, we obtained the following representation
 
-HC, Scaled, Complete Linkage, k=6
+[MI: add comments]
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 hc1 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend1 <- hc1 %>% as.dendrogram
-dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
+dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Complete Linkage")
 sub_grp1 <- cutree(hc1, k = 6)
 ```
 
-MI: Add commentary to complete clustering
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -185,16 +183,20 @@ adhd.red.complete %>%
   ggplot(aes(cluster,value,fill=cluster)) + 
   geom_col() + facet_grid(var ~ ., scales="free_y") +
   geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
-  ggtitle('Scaled Variables + Totals Cluster Distribution') +
+  ggtitle('Reduced Dataset + Complete Linkage Cluster Distribution') +
   theme_minimal()
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+[MI: add comments]
+
+```{r message=FALSE, warning=FALSE}
 hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "average")
 dend2 <- hc2 %>% as.dendrogram
-dend2 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
+dend2 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Average Linkage")
 sub_grp2 <- cutree(hc2, k = 6)
 ```
+
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -205,13 +207,15 @@ adhd.red.complete %>%
   ggplot(aes(cluster,value,fill=cluster)) + 
   geom_col() + facet_grid(var ~ ., scales="free_y") +
   geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
-  ggtitle('Scaled Variables + Totals Cluster Distribution') +
+  ggtitle('Reduced Dataset + Average Linkage Cluster Distribution') +
   theme_minimal()
 ```
 
 ### Comparison
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+[MI: add comments]
+
+```{r message=FALSE, warning=FALSE}
 dl <- dendlist(
   dend1 %>% 
     set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
@@ -244,45 +248,45 @@ Principal Comnponent Analysis (PCA) is a dimensionality reduction technique wher
 
 The method seeks to project the data into a lower dimensional space where each axis (or principal component) captures the most variability in the data subject to the condition of being uncorrelated to the other axes. This last condition is important for dimensionality reduction in the sense that large datasets can contain many correlated variables which hold no additional information.
 
-get_eigenvalue(res.pca): Extract the eigenvalues/variances of principal components
-fviz_eig(res.pca): Visualize the eigenvalues
-fviz_pca_ind(res.pca), fviz_pca_var(res.pca): Visualize the results individuals and variables, respectively.
-fviz_pca_biplot(res.pca): Make a biplot of individuals and variables.
-
 An eigenvalue > 1 indicates that PCs account for more variance than accounted by one of the original variables in standardized data. This is commonly used as a cutoff point for which PCs are retained. This holds true only when the data are standardized. We can also limit the number of component to that number that accounts for a certain fraction of the total variance, for example 70%.
-
-http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/
 
 ### ADHD Questionnaire
 
-This section focuses on the subset of the data containing only the individual responses to the ADHD questionnaire. The table below displays the first 10 eigenvalues obtained from the decomposition. Following from the cutoff decription above, our selection of dimensions can be based on the number of scaled eigenvalues that are greater than 1 or on a certain percentage of cummulative variance explained. Another way to select the number of PCs to consider is to study the scree plot provided below, which is simply a visual representation of the variance explained by each component. We typically look for an elbow in the plot to make our selection.
+This section focuses on the subset of the data containing only the individual responses to the ADHD questionnaire. The table below displays the first 10 eigenvalues obtained from the decomposition. Following from the cutoff decription above, our selection of dimensions can be based on the number of scaled eigenvalues that are greater than 1 or on a certain percentage of cummulative variance explained. Another way to select the number of PCs to consider is to study the scree plot provided below, which is simply a visual representation of the variance explained by each component. We typically look for an elbow in the plot to make our selection. In our case, the scree plot elbow occurs at Dimensions = 2 and the eigenvalue threshold at Dimensions = 3 which account for 59.2% and 64.8% respectively. 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   prcomp(scale = TRUE) %>% get_eigenvalue() %>% head(10)
 ```
 
-
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   prcomp(scale = FALSE) %>% 
   fviz_eig(addlabels = TRUE)
 ```
 
-We can study the individual contributions
+We can study the individual contributions of each questionnaire response to the principal components using the plot below. We observe that the contributions to the first principal component (Dim. 1) by the variables is roughly equivalent. However, Q16 bears a lot of weight in the 2nd dimensions and Q5 in the third. 
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 res.pca.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% prcomp(scale = FALSE)
 corrplot(get_pca_var(res.pca.adhd)$contrib, is.corr=FALSE)    
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+The cummulative contribution across the first 3 dimensions is summarized below. Q5 bears the most overall importance, followed by Q16 and Q4. It is worth diving into the actual questionnaire to look up what the question is asking to see if any insights can be drawn to explain the variability.
+
+  - Q4: When you have a task that requires a lot of thought, how often do you avoid or delay getting started?
+  - Q5: How often do you fidget or squirm with your hands or feet when you have to sit down for a long time?
+  - Q16: When you’re in a conversation, how often do you find yourself finishing the sentences of the people you are talking to, before they can finish them themselves?
+
+```{r message=FALSE, warning=FALSE}
 adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   prcomp(scale = FALSE) %>% 
-  fviz_contrib(choice = "var", axes = 1:2, top = 10)
+  fviz_contrib(choice = "var", axes = 1:3, top = 10)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+[MI: add comments]
+
+```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca.adhd,
              col.var = "contrib", # Color by contributions to the PC
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
@@ -290,36 +294,44 @@ fviz_pca_var(res.pca.adhd,
              )
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-fviz_pca_biplot(res.pca.adhd,
-             col.var = "contrib", # Color by contributions to the PC
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE     # Avoid text overlapping
-             )
-```
-
-
-
 ### Complete Dataset
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+Using the rest of the dataset, we can use PCA to extract additional information about the patients. Since we are using total scores for this section, the variables must be scaled in order to avoid any overweighted contributions. We find that it takes over 8 dimensions to explain approximately 70% of the variance. The scree plot has no obvious elbow which can be used to determine a cutoff. Using the eigenvalue cutoff at Dimension 7, we can still capture 65% of the variance.
+
+```{r message=FALSE, warning=FALSE}
+adhd.red.complete %>%
+  prcomp(scale = TRUE) %>%get_eigenvalue() %>% head(10)
+```
+
+```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
   prcomp(scale = TRUE) %>% 
   fviz_eig(addlabels = TRUE)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+From the correlation and variable contribution plots below, we can make a few observations:
+
+- SubstDX is the largest contributor to PC1 by far
+- ADHDTotal is the most important contribution to PC2
+- Sedatives and Opiods contribute about equally to PC3
+- Demographic factors Age, Race and Sex are the greatest contributors to PC4, 5 & 6 respectfully.
+- Stimulants is the leading contribution to PC7 which is our cutoff.
+
+```{r message=FALSE, warning=FALSE}
 res.pca <- adhd.red.complete %>% prcomp(scale = TRUE)
 corrplot(get_pca_var(res.pca)$contrib, is.corr=FALSE)    
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+Cummulatively for PC1 to PC7, we can observe from the below that SubstDX is the largest individual contributor to the principal components, followed by Age, Race and the two ADHD and Mood Disorder questionnaires.
+
+```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
   prcomp(scale = TRUE) %>% 
-  fviz_contrib(choice = "var", axes = 1:5, top = 10)
+  fviz_contrib(choice = "var", axes = 1:7, top = 10)
 ```
 
 
+[MI: add comments]
 
 Variable correlation plot and quality of representation/contribution
 
@@ -327,7 +339,7 @@ Positively correlated variables are grouped together.
 Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
 The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca,
              col.var = "contrib", # Color by contributions to the PC
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
@@ -335,7 +347,9 @@ fviz_pca_var(res.pca,
              )
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+[MI: add comments]
+
+```{r message=FALSE, warning=FALSE}
 fviz_pca_biplot(res.pca,
              col.var = "contrib", # Color by contributions to the PC
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
