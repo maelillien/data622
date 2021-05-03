@@ -25,7 +25,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(skimr)
 library(tidyverse)
 library(caret) # For featureplot, classification report
-library(corrplot) # For correlation matrix
+library(corrplot) # For correlation matrix and PCA contributionplots
 library(AppliedPredictiveModeling)
 library(mice) # For data imputation
 library(VIM) # For missing data visualization
@@ -73,6 +73,8 @@ We work with a multiple subsets of the data for subsequent parts this report. So
 # Renaming variables
 adhd <- rename(adhd, ADHDTotal = ADHD.Total, MDTotal = MD.TOTAL, Sedatives = Sedative.hypnotics, CourtOrder = Court.order, 
                Violence = Hx.of.Violence, Conduct = Disorderly.Conduct, NonSubstDX = Non.subst.Dx, SubstDX = Subst.Dx, PsychMeds = Psych.meds.)
+# Drop Initial column
+adhd <- adhd %>% select(-c(Initial))
 # Shift sex variable to 0 and 1
 adhd$Sex <- adhd$Sex-1
 # Re-coding Education Variable, College = Education > 12, HS = Education > 8 & <= 12, MS = Education <= 8 
@@ -82,13 +84,12 @@ adhd$AbuseP <- as.numeric(adhd$Abuse == 1 | adhd$Abuse == 4 | adhd$Abuse == 5 | 
 adhd$AbuseS <- as.numeric(adhd$Abuse == 2 | adhd$Abuse == 4 | adhd$Abuse == 6 | adhd$Abuse == 7)
 adhd$AbuseE <- as.numeric(adhd$Abuse == 3 | adhd$Abuse == 5 | adhd$Abuse == 6 | adhd$Abuse == 7)
 adhd <- adhd %>% select(-c(Abuse))
-
-# Selecting only variables not containing Qs
+# Forming data subsets: full set of variables or reduced (totals only)
 adhd.full <- adhd
-adhd <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:PsychMeds))
-
+adhd.red <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:PsychMeds))
 # Set all characters to numeric
-adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
+adhd.red <- mutate_all(adhd.red, function(x) as.numeric(as.character(x)))
+adhd.full <- mutate_all(adhd.full, function(x) as.numeric(as.character(x)))
 ```
 
 #### Missing Values
@@ -96,25 +97,22 @@ adhd <- mutate_all(adhd, function(x) as.numeric(as.character(x)))
 The dataset contains a few missing values. The PsychMeds variable mostly contained missing values and was dropped entirely. A few observations were quite sparse and only contained basic demographic and questionnaire score columns. In order to avoid biasing the dataset with imputed values, we preferred to drop all observations with missing values from the dataset. The resulting dataset contains 33 fewer observations with 142 complete rows and 19 columns.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-mice_plot <- aggr(adhd, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
+mice_plot <- aggr(adhd.red, col=c('#F8766D','#00BFC4'), numbers=TRUE, sortVars=TRUE, labels=names(adhd), cex.axis=.7, gap=3, ylab=c("Missing data","Pattern"))
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # Discard PsychMeds
-adhd.complete <- adhd %>% select(-c(PsychMeds))
+adhd.red.complete <- adhd.red %>% select(-c(PsychMeds))
+adhd.full.complete <- adhd.full %>% select(-c(PsychMeds))
 # Keep only complete cases
-adhd.complete <- adhd.complete[complete.cases(adhd.complete),]
-adhd.full.complete <- adhd.full[complete.cases(adhd.full),]
+adhd.red.complete <- adhd.red.complete[complete.cases(adhd.red.complete),]
+adhd.full.complete <- adhd.full.complete[complete.cases(adhd.full.complete),]
 ```
 
 ## Data Exploration
 
 
-Data must be scaled
 
-```{r}
-adhd.scaled <- scale(adhd.complete)
-```
 
 
 # Clustering
@@ -170,22 +168,37 @@ For a contrasting analysis, we looked at clustering based on the dataset which i
 HC, Scaled, Complete Linkage, k=6
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-hc1 <- adhd.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
+hc1 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend1 <- hc1 %>% as.dendrogram
 dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
 sub_grp1 <- cutree(hc1, k = 6)
+```
+
+MI: Add commentary to complete clustering
+
+```{r message=FALSE, warning=FALSE}
+adhd.red.complete %>%
+  mutate(cluster = sub_grp1) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
+  gather(var,value,meanAge:count) %>%
+  ggplot(aes(cluster,value,fill=cluster)) + 
+  geom_col() + facet_grid(var ~ ., scales="free_y") +
+  geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
+  ggtitle('Scaled Variables + Totals Cluster Distribution') +
+  theme_minimal()
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-hc1 <- adhd.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
-dend1 <- hc1 %>% as.dendrogram
-dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
-sub_grp1 <- cutree(hc1, k = 6)
+hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "average")
+dend2 <- hc2 %>% as.dendrogram
+dend2 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Scaled Variables + Totals")
+sub_grp2 <- cutree(hc2, k = 6)
 ```
 
 ```{r message=FALSE, warning=FALSE}
-adhd.complete %>%
-  mutate(cluster = sub_grp1) %>%
+adhd.red.complete %>%
+  mutate(cluster = sub_grp2) %>%
   group_by(cluster) %>%
   summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
   gather(var,value,meanAge:count) %>%
@@ -200,69 +213,76 @@ adhd.complete %>%
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 dl <- dendlist(
-  dend0 %>% 
-    set("labels_col", value = c("skyblue", "orange", "grey"), k=3) %>%
-    set("branches_lty", 1) %>%
-    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 3),
   dend1 %>% 
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
+    set("branches_lty", 1) %>%
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6),
+  dend2 %>% 
     set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
     set("branches_lty", 1) %>%
     set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6)
 )
  
 # Plot them together
-tanglegram(dl, 
-           common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE, 
+tanglegram(dl,
+           common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE,
            margin_inner=7,
            lwd=2,
            show_labels = FALSE
 )
+
+#tanglegram(dl, common_subtrees_color_lines = TRUE) # Color common branches )
+
+# dl %>% tanglegram(common_subtrees_color_branches = TRUE, common_subtrees_color_lines = TRUE, common_subtrees_color_lines_default_single_leaf_color='red')
 ```
 
 
 
 # Principal Component Analysis
 
-PCA is a dimensionality reduction technique in the sense that a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.
+Principal Comnponent Analysis (PCA) is a dimensionality reduction technique where a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.
 
 The method seeks to project the data into a lower dimensional space where each axis (or principal component) captures the most variability in the data subject to the condition of being uncorrelated to the other axes. This last condition is important for dimensionality reduction in the sense that large datasets can contain many correlated variables which hold no additional information.
 
 get_eigenvalue(res.pca): Extract the eigenvalues/variances of principal components
 fviz_eig(res.pca): Visualize the eigenvalues
-get_pca_ind(res.pca), get_pca_var(res.pca): Extract the results for individuals and variables, respectively.
 fviz_pca_ind(res.pca), fviz_pca_var(res.pca): Visualize the results individuals and variables, respectively.
 fviz_pca_biplot(res.pca): Make a biplot of individuals and variables.
 
-An eigenvalue > 1 indicates that PCs account for more variance than accounted by one of the original variables in standardized data. This is commonly used as a cutoff point for which PCs are retained. This holds true only when the data are standardized.
-
-You can also limit the number of component to that number that accounts for a certain fraction of the total variance. For example, if you are satisfied with 70% of the total variance explained then use the number of components to achieve that.
+An eigenvalue > 1 indicates that PCs account for more variance than accounted by one of the original variables in standardized data. This is commonly used as a cutoff point for which PCs are retained. This holds true only when the data are standardized. We can also limit the number of component to that number that accounts for a certain fraction of the total variance, for example 70%.
 
 http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/
 
-1. PCA with questionnaire responses only (not scaled)
-
-  Contributions, Scree
-
-  a. ADHD
-
-  b. MD
-
-2. PCA with score totals and demographics
-
-  Eigenvectors and variable plot, Scree
-
-
 ### ADHD Questionnaire
 
+This section focuses on the subset of the data containing only the individual responses to the ADHD questionnaire. The table below displays the first 10 eigenvalues obtained from the decomposition. Following from the cutoff decription above, our selection of dimensions can be based on the number of scaled eigenvalues that are greater than 1 or on a certain percentage of cummulative variance explained. Another way to select the number of PCs to consider is to study the scree plot provided below, which is simply a visual representation of the variance explained by each component. We typically look for an elbow in the plot to make our selection.
 
 ```{r}
-pca_data.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18)
-res.pca.adhd <- prcomp(pca_data.adhd, scale = FALSE)
-res.var <- get_pca_var(res.pca.adhd)
-fviz_eig(res.pca.adhd, addlabels = TRUE)
+adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
+  prcomp(scale = TRUE) %>% get_eigenvalue() %>% head(10)
 ```
 
-```{r}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
+  prcomp(scale = FALSE) %>% 
+  fviz_eig(addlabels = TRUE)
+```
+
+We can study the individual contributions
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+res.pca.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% prcomp(scale = FALSE)
+corrplot(get_pca_var(res.pca.adhd)$contrib, is.corr=FALSE)    
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
+  prcomp(scale = FALSE) %>% 
+  fviz_contrib(choice = "var", axes = 1:2, top = 10)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca.adhd,
              col.var = "contrib", # Color by contributions to the PC
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
@@ -270,31 +290,34 @@ fviz_pca_var(res.pca.adhd,
              )
 ```
 
-```{r}
-# Contributions of variables to PC1
-fviz_contrib(res.pca.adhd, choice = "var", axes = 1, top = 10)
-# Contributions of variables to PC2
-fviz_contrib(res.pca.adhd, choice = "var", axes = 2, top = 10)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+fviz_pca_biplot(res.pca.adhd,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
 ```
+
 
 
 ### Complete Dataset
 
-```{r}
-data.pca <- adhd.complete
-res.pca <- prcomp(data.pca, scale = TRUE)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+adhd.red.complete %>%
+  prcomp(scale = TRUE) %>% 
+  fviz_eig(addlabels = TRUE)
 ```
 
-```{r}
-fviz_eig(res.pca, addlabels = TRUE)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+res.pca <- adhd.red.complete %>% prcomp(scale = TRUE)
+corrplot(get_pca_var(res.pca)$contrib, is.corr=FALSE)    
 ```
 
-```{r}
-fviz_contrib(res.pca, choice = "var", axes = 1, top = 10)
-fviz_contrib(res.pca, choice = "var", axes = 2, top = 10)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+adhd.red.complete %>%
+  prcomp(scale = TRUE) %>% 
+  fviz_contrib(choice = "var", axes = 1:5, top = 10)
 ```
-
-
 
 
 
@@ -304,7 +327,7 @@ Positively correlated variables are grouped together.
 Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
 The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map.
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca,
              col.var = "contrib", # Color by contributions to the PC
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
@@ -312,12 +335,18 @@ fviz_pca_var(res.pca,
              )
 ```
 
-
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+fviz_pca_biplot(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
 
 # SVM
 ## SVM - Via Dataset
 ```{r}
-adhd.complete2 <- adhd.complete
+adhd.complete2 <- adhd.red.complete
 adhd.complete2$Suicide <- as.factor(adhd.complete2$Suicide)
 
 set.seed(55)
