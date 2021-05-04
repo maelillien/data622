@@ -40,7 +40,7 @@ library(e1071) # For SVM
 
 # ADHD Dataset
 
-This dataset is composed of real patient responses to two questionnaires related to ADHD and Mood Disorder and a variety of demographic, abuse, drug use variarables. For each questionnaire, the responses to individual questions are provided along with total scores. Links to the actual questions are provided below:
+This dataset is composed of real patient responses to two questionnaires related to ADHD and Mood Disorder and a variety of demographic, abuse and drug use variarables. For each questionnaire, the responses to individual questions are provided along with total scores. Links to the actual questions are provided below:
 
   - [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf)
   - [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf)
@@ -86,7 +86,7 @@ adhd$AbuseE <- as.numeric(adhd$Abuse == 3 | adhd$Abuse == 5 | adhd$Abuse == 6 | 
 adhd <- adhd %>% select(-c(Abuse))
 # Forming data subsets: full set of variables or reduced (totals only)
 adhd.full <- adhd
-adhd.red <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:PsychMeds))
+adhd.red <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:AbuseE))
 # Set all characters to numeric
 adhd.red <- mutate_all(adhd.red, function(x) as.numeric(as.character(x)))
 adhd.full <- mutate_all(adhd.full, function(x) as.numeric(as.character(x)))
@@ -117,9 +117,9 @@ adhd.full.complete <- adhd.full.complete[complete.cases(adhd.full.complete),]
 
 # Clustering
 
-Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches are K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is bottom-up or agglomerative clustering approach which results in am upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
+Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches are K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is a bottom-up or agglomerative clustering approach which results in an upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
 
-In this section, we explore the use of Hierarchical Clustering on two portions of the data. The first uses only the questionnaire responses to ADHD while the second uses the total questionnaire scores for both survey as well as the other variables (demographic, drugs, abuse, etc).
+In this section, we explore the use of Hierarchical Clustering on two portions of the data. The first uses only the questionnaire responses to ADHD while the second uses the total questionnaire scores for both surveys as well as the other variables (demographic, drugs, abuse, etc). The latter is referred to as the 'reduced' dataset.
 
 Clustering typically requires the variables to be scaled in order to avoid more weight to variables using a larger range of values. However, when all the variables under conideration are measured on the same scale, which is the case when only comparing survey responses, it can be appropriate to leave the variables unscaled.
 
@@ -129,14 +129,6 @@ With HC, the concept of dissimilarity between a pair of observations needs to be
 
 Using only the individual unscaled responses to the ADHD Questionnaire, we obtain the following dendrogram structure using complete linkage. In this case, complete linkage provided the best balancing and a cutoff into 3 clusters looked appropriate. In order to gain insight into these clusters, we need to look at the distribution of the variables within each of them. 
 
-
-```{r message=FALSE, warning=FALSE}
-hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
-dend0 <- hc0 %>% as.dendrogram
-dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
-sub_grp0 <- cutree(hc0, k = 3)
-```
-
 For these 3 clusters, we can make the following observations:
 
   - The clusters have very similar average age.
@@ -144,7 +136,14 @@ For these 3 clusters, we can make the following observations:
   - Cluster 1 in on the other end of the spectrum and has the largest average lowest average ADHD and Mood Disorder total scores.
   - Clusters 2 is the largest subgroup with scores falling in between clusters 1 and 3 
   
-We can establish a ranking for this clustering based on the monotic rise in the meanADHD, meanAge and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1
+We can establish a ranking for this clustering based on the monotic rise in the meanADHD and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1. With this information, a treatment plan could be developped to focus on clusters 2 and 1, with the latter requiring special attention.
+
+```{r message=FALSE, warning=FALSE}
+hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
+dend0 <- hc0 %>% as.dendrogram
+sub_grp0 <- cutree(dend0, k = 3, order_clusters_as_data = TRUE)
+dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
+```
 
 ```{r message=FALSE, warning=FALSE}
 adhd.full %>%
@@ -161,18 +160,27 @@ adhd.full %>%
 
 ### Reduced Dataset
 
-For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. Using complete linkage, we obtained the following representation
+For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. We explore the use of complete, average and Ward linkages.
 
-[MI: add comments]
+#### Complete Linkage
+
+Unlike the previous clustering, adding the other variables results in a less balanced dendrogram. In this case, there are a few clusters containing only a few observations and two large clusters containing the majority of the data. We can make a few additional observations:
+
+  - The largest cluster has the highest meanAge but the lowest average ADHD and MD scores. The value for meanADHD in this group is about twice the value of the least severe group in the previous cluster (ADHD only). 
+  - Clusters 5 and 6 are the smallest and youngest grouping on average. Interestly, the individuals making up these groups are on the highest end of the meanADHD and meanMD variables. These individual may consitute a subgroup for potential treatment.
+  - Clusters 1 and 3 are have very close meanMD values but remain dissimilar in terms of age and meanADHD scores. Cluster 3 is on average older by about 6 years but Cluster 1 has nearly 10 more ADHD points. 
+
+Based on the variable distributions, it might be tempting to want to group clusters 4, 5 and 6 together since they represent a younger cohort with similar meanMD and meanADHD scores. However, hierachichal clustering considers more variables than the aforementioned few and this kind of grouping would violate the measure of similarity as determined by the y axis of the dendrogram.
+
+A proposed ADHD and Mood Disorder ranking in 4 levels from least severe to most severe is: Cluster 2, Clusters 3 (younger) & 4 (older), Clusters 5 (younger) & 1 (older), Cluster 6.
 
 ```{r message=FALSE, warning=FALSE}
 hc1 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend1 <- hc1 %>% as.dendrogram
+sub_grp1 <- cutree(dend1, k = 6)
 dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Complete Linkage")
-sub_grp1 <- cutree(hc1, k = 6)
 ```
 
-[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -187,16 +195,20 @@ adhd.red.complete %>%
   theme_minimal()
 ```
 
-[MI: add comments]
+#### Average Linkage
+
+Average linkage completely changes the dendrogram representation. The same number of clusters, k=6 seemed appropriate. Similarly to complete linkage, one large cluster is identified, this time containing the vast majority of the observations. This obscures the analysis beyond what we can establish about the small clusters. 
+
+  - Clusters 6 and Cluster 5, both of size 1, represented the most severe and less severe cases respectively. It is interesting to note that Cluster 5 in more similar to the rest of the data in term of hierachy than to Cluster 6. 
+  - Cluster 4 contains a handful of individuals that might also be considered severe. 
+  - The large Cluster 2 must contain a variety of individuals that may have large variations in ADHD and MD scores but are nevertheless similar based on other attributes.
 
 ```{r message=FALSE, warning=FALSE}
-hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "average")
+hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method =  'average')
 dend2 <- hc2 %>% as.dendrogram
+sub_grp2 <- cutree(dend2, k = 6)
 dend2 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Average Linkage")
-sub_grp2 <- cutree(hc2, k = 6)
 ```
-
-[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -211,20 +223,44 @@ adhd.red.complete %>%
   theme_minimal()
 ```
 
+#### Ward Linkage
+
+While average linkage is a popular option, the resulting clustering above was somewhat unattractive. Here we consider another linkage method to expand the analysis. Ward linkage makes use of Ward's minimum variance criterion whcih seeks to minimizes the total within-cluster variance. The resulting dendrogram is visually attractive and more balanced than before. A cutoff at k=5 clusters seems appropriate. While more balanced, the insights drawn from the variable distributions across the clusters are not as obvious as when using complete linkage. It is harder to determine the least and most severe clusters as the grouping with the lower meanMD score also has the highest meanADHD score. Clusters 1 and 3 have similar questionnaire scores while differing by more than 10 years on average.
+
+```{r message=FALSE, warning=FALSE}
+hc3 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method =  'ward.D')
+dend3 <- hc3 %>% as.dendrogram
+sub_grp3 <- cutree(dend3, k = 5)
+dend3 %>% set("branches_k_color", k = 5) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Ward Linkage")
+```
+
+```{r message=FALSE, warning=FALSE}
+adhd.red.complete %>%
+  mutate(cluster = sub_grp3) %>%
+  group_by(cluster) %>%
+  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
+  gather(var,value,meanAge:count) %>%
+  ggplot(aes(cluster,value,fill=cluster)) + 
+  geom_col() + facet_grid(var ~ ., scales="free_y") +
+  geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
+  ggtitle('Reduced Dataset + Ward Linkage Cluster Distribution') +
+  theme_minimal()
+```
+
 ### Comparison
 
-[MI: add comments]
+We use a tanglegram to obtain side-by-side comparisons on the clusters obtained using the different linkage methods. Here we only compare the complete and average linkage clusterings which are similar in terms of cluster imbalance. The first thing to notice is the consistency of groupings at the higher ends of the hiearchies. This is shown by the horizontal ribbon linking the two clustering and indicates that the selected observations end up in the corresponsing cluster representation. Naturally, a large number of observations find correspondence in the opposing largest clusters. A few observations cross the tanglegram to the opposite corner from smaller clusters. Further study of these patients might be of interest. 
 
 ```{r message=FALSE, warning=FALSE}
 dl <- dendlist(
   dend1 %>% 
-    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
+    set("labels_col", k=6) %>%
     set("branches_lty", 1) %>%
-    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6),
+    set("branches_k_color", k = 6),
   dend2 %>% 
-    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
+    set("labels_col", k=6) %>%
     set("branches_lty", 1) %>%
-    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6)
+    set("branches_k_color", k = 6)
 )
  
 # Plot them together
@@ -234,13 +270,32 @@ tanglegram(dl,
            lwd=2,
            show_labels = FALSE
 )
-
-#tanglegram(dl, common_subtrees_color_lines = TRUE) # Color common branches )
-
-# dl %>% tanglegram(common_subtrees_color_branches = TRUE, common_subtrees_color_lines = TRUE, common_subtrees_color_lines_default_single_leaf_color='red')
+title("Complete Linkage vs Average")
 ```
 
+[MI: comment or delete]
 
+```{r message=FALSE, warning=FALSE}
+dl <- dendlist(
+  dend1 %>% 
+    set("labels_col", k=6) %>%
+    set("branches_lty", 1) %>%
+    set("branches_k_color", k = 6),
+  dend3 %>% 
+    set("labels_col", k=5) %>%
+    set("branches_lty", 1) %>%
+    set("branches_k_color", k = 5)
+)
+ 
+# Plot them together
+tanglegram(dl,
+           common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE,
+           margin_inner=7,
+           lwd=2,
+           show_labels = FALSE
+)
+title("Complete Linkage vs Ward Linkage")
+```
 
 # Principal Component Analysis
 
@@ -265,14 +320,14 @@ adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   fviz_eig(addlabels = TRUE)
 ```
 
-We can study the individual contributions of each questionnaire response to the principal components using the plot below. We observe that the contributions to the first principal component (Dim. 1) by the variables is roughly equivalent. However, Q16 bears a lot of weight in the 2nd dimensions and Q5 in the third. 
+We can study the individual contributions of each questionnaire response to the principal components using the plot below. We observe that the contributions to the first principal component (Dim. 1) by the variables is roughly equivalent. However, Q16 bears a lot of weight in the 2nd dimension as Q5 does in the third dimension.
 
 ```{r message=FALSE, warning=FALSE}
 res.pca.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% prcomp(scale = FALSE)
 corrplot(get_pca_var(res.pca.adhd)$contrib, is.corr=FALSE)    
 ```
 
-The cummulative contribution across the first 3 dimensions is summarized below. Q5 bears the most overall importance, followed by Q16 and Q4. It is worth diving into the actual questionnaire to look up what the question is asking to see if any insights can be drawn to explain the variability.
+The cummulative contribution across the first 3 dimensions is summarized below. Q5 bears the most overall importance, followed by Q16 and Q4. It is worth diving into the actual questionnaire to look up what each question is asking to see if any insights can be drawn to explain the variability. The questions are listed below.
 
   - Q4: When you have a task that requires a lot of thought, how often do you avoid or delay getting started?
   - Q5: How often do you fidget or squirm with your hands or feet when you have to sit down for a long time?
@@ -284,7 +339,14 @@ adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   fviz_contrib(choice = "var", axes = 1:3, top = 10)
 ```
 
-[MI: add comments]
+We can visualize these contribution in 2 dimensions using the first two PCs as shown below. On this plot, we look at the groupings and directions of the vectors. Positively correlated variables are grouped together. Negatively correlated variables are positioned on opposite sides of the plot origin. The distance between variables and the origin measures the contribution of the variables. We make the following observations:
+
+  - Q16 is most red and shown as the most contributing variable in this representation due to it's importance in PC2 which we saw above. 
+  - Q15, Q17 and Q18 are closely correlated while being away from the correlated vectors near the PC1 axis.
+  - Most vectors hug the PC1 axis as can be explained from the fairly even contributions to PC1 reveale don the correlation plot.
+  - Q16, A9, Q4 and Q5 have the largest distances from the origin and contribute similarly to PC1 but contribute quite differently to PC2 where Q16 dominates
+
+
 
 ```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca.adhd,
@@ -294,9 +356,9 @@ fviz_pca_var(res.pca.adhd,
              )
 ```
 
-### Complete Dataset
+### Reduced Dataset
 
-Using the rest of the dataset, we can use PCA to extract additional information about the patients. Since we are using total scores for this section, the variables must be scaled in order to avoid any overweighted contributions. We find that it takes over 8 dimensions to explain approximately 70% of the variance. The scree plot has no obvious elbow which can be used to determine a cutoff. Using the eigenvalue cutoff at Dimension 7, we can still capture 65% of the variance.
+Using the resduced dataset, we can use PCA to extract additional information about the patients. Since we are using total scores for this section, the variables must be scaled in order to avoid any overweighted contributions. We find that it takes over 8 dimensions to explain approximately 70% of the variance. The scree plot has no obvious elbow which can be used to determine a cutoff. Using the eigenvalue cutoff at Dimension 7, we can still capture 65% of the variance.
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -331,13 +393,9 @@ adhd.red.complete %>%
 ```
 
 
-[MI: add comments]
+The 2D representation of the variable contributions to PC1 and PC2 are shown below. SubstDX has the largest contribution in the direction of the PC2 axis. In the same direction we can identify lesser but nevertheless present contributions from variables such as Violence, Conduct, Cocaine, THC and Alcohol. 
 
-Variable correlation plot and quality of representation/contribution
 
-Positively correlated variables are grouped together.
-Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
-The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map.
 
 ```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca,
