@@ -40,7 +40,7 @@ library(e1071) # For SVM
 
 # ADHD Dataset
 
-This dataset is composed of real patient responses to two questionnaires related to ADHD and Mood Disorder and a variety of demographic, abuse and drug use variarables. For each questionnaire, the responses to individual questions are provided along with total scores. Links to the actual questions are provided below:
+This dataset is composed of real patient responses to two questionnaires related to ADHD and Mood Disorder and a variety of demographic, abuse, drug use variarables. For each questionnaire, the responses to individual questions are provided along with total scores. Links to the actual questions are provided below:
 
   - [Adult ADHD Self-Report Scale Symptom Checklis](https://add.org/wp-content/uploads/2015/03/adhd-questionnaire-ASRS111.pdf)
   - [Mood Disorder Questionnaire](https://www.ohsu.edu/sites/default/files/2019-06/cms-quality-bipolar_disorder_mdq_screener.pdf)
@@ -86,7 +86,7 @@ adhd$AbuseE <- as.numeric(adhd$Abuse == 3 | adhd$Abuse == 5 | adhd$Abuse == 6 | 
 adhd <- adhd %>% select(-c(Abuse))
 # Forming data subsets: full set of variables or reduced (totals only)
 adhd.full <- adhd
-adhd.red <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:AbuseE))
+adhd.red <- adhd %>% select(c(Age, Sex, Race, ADHDTotal, MDTotal, Alcohol:PsychMeds))
 # Set all characters to numeric
 adhd.red <- mutate_all(adhd.red, function(x) as.numeric(as.character(x)))
 adhd.full <- mutate_all(adhd.full, function(x) as.numeric(as.character(x)))
@@ -117,9 +117,9 @@ adhd.full.complete <- adhd.full.complete[complete.cases(adhd.full.complete),]
 
 # Clustering
 
-Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches are K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is a bottom-up or agglomerative clustering approach which results in an upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
+Clustering refers to a broad set of techniques for finding subgroups, or clusters, in a dataset. We seek to partition observations into distinct groups so that the observations within each group are quite similar to each other, while observations in different groups are quite different from each other. The most popular clustering approaches are K-means and Hierarchical Clustering (HC). While the former requires a pre-specified number of clusters k, the latter does not. HC is bottom-up or agglomerative clustering approach which results in am upside-down tree representation, built from the leaves and combined into clusters up to the trunk. Clusters are identified by horizontal cuts across the dendrogram.
 
-In this section, we explore the use of Hierarchical Clustering on two portions of the data. The first uses only the questionnaire responses to ADHD while the second uses the total questionnaire scores for both surveys as well as the other variables (demographic, drugs, abuse, etc). The latter is referred to as the 'reduced' dataset.
+In this section, we explore the use of Hierarchical Clustering on two portions of the data. The first uses only the questionnaire responses to ADHD while the second uses the total questionnaire scores for both survey as well as the other variables (demographic, drugs, abuse, etc).
 
 Clustering typically requires the variables to be scaled in order to avoid more weight to variables using a larger range of values. However, when all the variables under conideration are measured on the same scale, which is the case when only comparing survey responses, it can be appropriate to leave the variables unscaled.
 
@@ -129,6 +129,14 @@ With HC, the concept of dissimilarity between a pair of observations needs to be
 
 Using only the individual unscaled responses to the ADHD Questionnaire, we obtain the following dendrogram structure using complete linkage. In this case, complete linkage provided the best balancing and a cutoff into 3 clusters looked appropriate. In order to gain insight into these clusters, we need to look at the distribution of the variables within each of them. 
 
+
+```{r message=FALSE, warning=FALSE}
+hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
+dend0 <- hc0 %>% as.dendrogram
+dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
+sub_grp0 <- cutree(hc0, k = 3)
+```
+
 For these 3 clusters, we can make the following observations:
 
   - The clusters have very similar average age.
@@ -136,14 +144,7 @@ For these 3 clusters, we can make the following observations:
   - Cluster 1 in on the other end of the spectrum and has the largest average lowest average ADHD and Mood Disorder total scores.
   - Clusters 2 is the largest subgroup with scores falling in between clusters 1 and 3 
   
-We can establish a ranking for this clustering based on the monotic rise in the meanADHD and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1. With this information, a treatment plan could be developped to focus on clusters 2 and 1, with the latter requiring special attention.
-
-```{r message=FALSE, warning=FALSE}
-hc0 <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% dist(method = "euclidean") %>% hclust(method = "complete")
-dend0 <- hc0 %>% as.dendrogram
-sub_grp0 <- cutree(dend0, k = 3, order_clusters_as_data = TRUE)
-dend0 %>% set("branches_k_color", k = 3) %>% set("labels", "") %>% plot(main = "Hierarchical Clustering ADHD Questionnaire")
-```
+We can establish a ranking for this clustering based on the monotic rise in the meanADHD, meanAge and meanMD across clusters. From less to most severe: Cluster 3, Cluster 2, Cluster 1
 
 ```{r message=FALSE, warning=FALSE}
 adhd.full %>%
@@ -160,27 +161,18 @@ adhd.full %>%
 
 ### Reduced Dataset
 
-For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. We explore the use of complete, average and Ward linkages.
+For a contrasting analysis, we looked at clustering based on the dataset which included only the total questionnaire scores and dropped observations with missing values. The variables were scaled to balance out the contribution of the high values for scores and age. Using complete linkage, we obtained the following representation
 
-#### Complete Linkage
-
-Unlike the previous clustering, adding the other variables results in a less balanced dendrogram. In this case, there are a few clusters containing only a few observations and two large clusters containing the majority of the data. We can make a few additional observations:
-
-  - The largest cluster has the highest meanAge but the lowest average ADHD and MD scores. The value for meanADHD in this group is about twice the value of the least severe group in the previous cluster (ADHD only). 
-  - Clusters 5 and 6 are the smallest and youngest grouping on average. Interestly, the individuals making up these groups are on the highest end of the meanADHD and meanMD variables. These individual may consitute a subgroup for potential treatment.
-  - Clusters 1 and 3 are have very close meanMD values but remain dissimilar in terms of age and meanADHD scores. Cluster 3 is on average older by about 6 years but Cluster 1 has nearly 10 more ADHD points. 
-
-Based on the variable distributions, it might be tempting to want to group clusters 4, 5 and 6 together since they represent a younger cohort with similar meanMD and meanADHD scores. However, hierachichal clustering considers more variables than the aforementioned few and this kind of grouping would violate the measure of similarity as determined by the y axis of the dendrogram.
-
-A proposed ADHD and Mood Disorder ranking in 4 levels from least severe to most severe is: Cluster 2, Clusters 3 (younger) & 4 (older), Clusters 5 (younger) & 1 (older), Cluster 6.
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 hc1 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "complete")
 dend1 <- hc1 %>% as.dendrogram
-sub_grp1 <- cutree(dend1, k = 6)
 dend1 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Complete Linkage")
+sub_grp1 <- cutree(hc1, k = 6)
 ```
 
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -195,20 +187,16 @@ adhd.red.complete %>%
   theme_minimal()
 ```
 
-#### Average Linkage
-
-Average linkage completely changes the dendrogram representation. The same number of clusters, k=6 seemed appropriate. Similarly to complete linkage, one large cluster is identified, this time containing the vast majority of the observations. This obscures the analysis beyond what we can establish about the small clusters. 
-
-  - Clusters 6 and Cluster 5, both of size 1, represented the most severe and less severe cases respectively. It is interesting to note that Cluster 5 in more similar to the rest of the data in term of hierachy than to Cluster 6. 
-  - Cluster 4 contains a handful of individuals that might also be considered severe. 
-  - The large Cluster 2 must contain a variety of individuals that may have large variations in ADHD and MD scores but are nevertheless similar based on other attributes.
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
-hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method =  'average')
+hc2 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method = "average")
 dend2 <- hc2 %>% as.dendrogram
-sub_grp2 <- cutree(dend2, k = 6)
 dend2 %>% set("branches_k_color", k = 6) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Average Linkage")
+sub_grp2 <- cutree(hc2, k = 6)
 ```
+
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -223,44 +211,20 @@ adhd.red.complete %>%
   theme_minimal()
 ```
 
-#### Ward Linkage
-
-While average linkage is a popular option, the resulting clustering above was somewhat unattractive. Here we consider another linkage method to expand the analysis. Ward linkage makes use of Ward's minimum variance criterion whcih seeks to minimizes the total within-cluster variance. The resulting dendrogram is visually attractive and more balanced than before. A cutoff at k=5 clusters seems appropriate. While more balanced, the insights drawn from the variable distributions across the clusters are not as obvious as when using complete linkage. It is harder to determine the least and most severe clusters as the grouping with the lower meanMD score also has the highest meanADHD score. Clusters 1 and 3 have similar questionnaire scores while differing by more than 10 years on average.
-
-```{r message=FALSE, warning=FALSE}
-hc3 <- adhd.red.complete %>%  scale %>% dist(method = "euclidean") %>% hclust(method =  'ward.D')
-dend3 <- hc3 %>% as.dendrogram
-sub_grp3 <- cutree(dend3, k = 5)
-dend3 %>% set("branches_k_color", k = 5) %>% set("labels", "") %>% plot(main = "Hierachical Clustering Reduced Dataset + Ward Linkage")
-```
-
-```{r message=FALSE, warning=FALSE}
-adhd.red.complete %>%
-  mutate(cluster = sub_grp3) %>%
-  group_by(cluster) %>%
-  summarise(meanAge = mean(Age), meanMD = mean(MDTotal), meanADHD = mean(ADHDTotal), count = n()) %>%
-  gather(var,value,meanAge:count) %>%
-  ggplot(aes(cluster,value,fill=cluster)) + 
-  geom_col() + facet_grid(var ~ ., scales="free_y") +
-  geom_text(aes(label=round(value,1)), vjust=1.6, color="white", size=3.5) + 
-  ggtitle('Reduced Dataset + Ward Linkage Cluster Distribution') +
-  theme_minimal()
-```
-
 ### Comparison
 
-We use a tanglegram to obtain side-by-side comparisons on the clusters obtained using the different linkage methods. Here we only compare the complete and average linkage clusterings which are similar in terms of cluster imbalance. The first thing to notice is the consistency of groupings at the higher ends of the hiearchies. This is shown by the horizontal ribbon linking the two clustering and indicates that the selected observations end up in the corresponsing cluster representation. Naturally, a large number of observations find correspondence in the opposing largest clusters. A few observations cross the tanglegram to the opposite corner from smaller clusters. Further study of these patients might be of interest. 
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 dl <- dendlist(
   dend1 %>% 
-    set("labels_col", k=6) %>%
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
     set("branches_lty", 1) %>%
-    set("branches_k_color", k = 6),
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6),
   dend2 %>% 
-    set("labels_col", k=6) %>%
+    set("labels_col", value = c("skyblue", "orange", "grey"), k=6) %>%
     set("branches_lty", 1) %>%
-    set("branches_k_color", k = 6)
+    set("branches_k_color", value = c("skyblue", "orange", "grey"), k = 6)
 )
  
 # Plot them together
@@ -270,32 +234,11 @@ tanglegram(dl,
            lwd=2,
            show_labels = FALSE
 )
-title("Complete Linkage vs Average")
+#tanglegram(dl, common_subtrees_color_lines = TRUE) # Color common branches )
+# dl %>% tanglegram(common_subtrees_color_branches = TRUE, common_subtrees_color_lines = TRUE, common_subtrees_color_lines_default_single_leaf_color='red')
 ```
 
-[MI: comment or delete]
 
-```{r message=FALSE, warning=FALSE}
-dl <- dendlist(
-  dend1 %>% 
-    set("labels_col", k=6) %>%
-    set("branches_lty", 1) %>%
-    set("branches_k_color", k = 6),
-  dend3 %>% 
-    set("labels_col", k=5) %>%
-    set("branches_lty", 1) %>%
-    set("branches_k_color", k = 5)
-)
- 
-# Plot them together
-tanglegram(dl,
-           common_subtrees_color_lines = TRUE, highlight_distinct_edges  = TRUE, highlight_branches_lwd=FALSE,
-           margin_inner=7,
-           lwd=2,
-           show_labels = FALSE
-)
-title("Complete Linkage vs Ward Linkage")
-```
 
 # Principal Component Analysis
 
@@ -320,14 +263,14 @@ adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   fviz_eig(addlabels = TRUE)
 ```
 
-We can study the individual contributions of each questionnaire response to the principal components using the plot below. We observe that the contributions to the first principal component (Dim. 1) by the variables is roughly equivalent. However, Q16 bears a lot of weight in the 2nd dimension as Q5 does in the third dimension.
+We can study the individual contributions of each questionnaire response to the principal components using the plot below. We observe that the contributions to the first principal component (Dim. 1) by the variables is roughly equivalent. However, Q16 bears a lot of weight in the 2nd dimensions and Q5 in the third. 
 
 ```{r message=FALSE, warning=FALSE}
 res.pca.adhd <- adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>% prcomp(scale = FALSE)
 corrplot(get_pca_var(res.pca.adhd)$contrib, is.corr=FALSE)    
 ```
 
-The cummulative contribution across the first 3 dimensions is summarized below. Q5 bears the most overall importance, followed by Q16 and Q4. It is worth diving into the actual questionnaire to look up what each question is asking to see if any insights can be drawn to explain the variability. The questions are listed below.
+The cummulative contribution across the first 3 dimensions is summarized below. Q5 bears the most overall importance, followed by Q16 and Q4. It is worth diving into the actual questionnaire to look up what the question is asking to see if any insights can be drawn to explain the variability.
 
   - Q4: When you have a task that requires a lot of thought, how often do you avoid or delay getting started?
   - Q5: How often do you fidget or squirm with your hands or feet when you have to sit down for a long time?
@@ -339,14 +282,7 @@ adhd.full %>% select(ADHD.Q1:ADHD.Q18) %>%
   fviz_contrib(choice = "var", axes = 1:3, top = 10)
 ```
 
-We can visualize these contribution in 2 dimensions using the first two PCs as shown below. On this plot, we look at the groupings and directions of the vectors. Positively correlated variables are grouped together. Negatively correlated variables are positioned on opposite sides of the plot origin. The distance between variables and the origin measures the contribution of the variables. We make the following observations:
-
-  - Q16 is most red and shown as the most contributing variable in this representation due to it's importance in PC2 which we saw above. 
-  - Q15, Q17 and Q18 are closely correlated while being away from the correlated vectors near the PC1 axis.
-  - Most vectors hug the PC1 axis as can be explained from the fairly even contributions to PC1 reveale don the correlation plot.
-  - Q16, A9, Q4 and Q5 have the largest distances from the origin and contribute similarly to PC1 but contribute quite differently to PC2 where Q16 dominates
-
-
+[MI: add comments]
 
 ```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca.adhd,
@@ -356,9 +292,9 @@ fviz_pca_var(res.pca.adhd,
              )
 ```
 
-### Reduced Dataset
+### Complete Dataset
 
-Using the resduced dataset, we can use PCA to extract additional information about the patients. Since we are using total scores for this section, the variables must be scaled in order to avoid any overweighted contributions. We find that it takes over 8 dimensions to explain approximately 70% of the variance. The scree plot has no obvious elbow which can be used to determine a cutoff. Using the eigenvalue cutoff at Dimension 7, we can still capture 65% of the variance.
+Using the rest of the dataset, we can use PCA to extract additional information about the patients. Since we are using total scores for this section, the variables must be scaled in order to avoid any overweighted contributions. We find that it takes over 8 dimensions to explain approximately 70% of the variance. The scree plot has no obvious elbow which can be used to determine a cutoff. Using the eigenvalue cutoff at Dimension 7, we can still capture 65% of the variance.
 
 ```{r message=FALSE, warning=FALSE}
 adhd.red.complete %>%
@@ -393,9 +329,13 @@ adhd.red.complete %>%
 ```
 
 
-The 2D representation of the variable contributions to PC1 and PC2 are shown below. SubstDX has the largest contribution in the direction of the PC2 axis. In the same direction we can identify lesser but nevertheless present contributions from variables such as Violence, Conduct, Cocaine, THC and Alcohol. 
+[MI: add comments]
 
+Variable correlation plot and quality of representation/contribution
 
+Positively correlated variables are grouped together.
+Negatively correlated variables are positioned on opposite sides of the plot origin (opposed quadrants).
+The distance between variables and the origin measures the quality of the variables on the factor map. Variables that are away from the origin are well represented on the factor map.
 
 ```{r message=FALSE, warning=FALSE}
 fviz_pca_var(res.pca,
@@ -415,8 +355,58 @@ fviz_pca_biplot(res.pca,
              )
 ```
 
-# SVM
-## SVM - Via Dataset
+# Support Vector Machines
+The primary goal of Support Vector Machines (SVM) is to determine a decision boundary between classes with maximum separation. Between classes there can be an infinite number of decision boundaries. The points from each class closest to the decision boundary are called Support Vectors. SVM looks to find an optimal decision boundary such that Support Vectors from each class have a maximum decision boundary and each class is on different sides of the decision boundary. Classification of a new unseen point is determined on which side of the decision boundary the point resides on.  
+  
+For data that is not linearly separable due to either overlapping or in an nth dimensional space for n number of features, SVM utilizes kernel functions (also called kernel trick) to transform the feature space from n dimensions to a higher n+y dimensions to achieve better separation of classes. The separating boundary in this higher dimension is called a hyperplane.
+
+The strategy that we will use for SVM is to compare several models specifically with and without Principal Component Analysis dimensionality reduction. For each model that is run  we hypertune the model parameters via a gridsearch of:
+  
+- Kernel: Linear, Polynomial, Radial, and Sigmoid  
+- Cost Function: Tune to control he penalty imposed on observations that lie outside the epsilon margin by penalizing predictions that are farther than the desired output
+- Epsilon Intensive Loss Function: epsilon margin value  
+  
+The models will perform a 10-fold Crossvalidation to prevent overfitting and arrive at the overall best parameters and accuracy rate below
+
+## SVM(Dataset)
+The dataset as is approach can be approached in two ways, to model against the entire dataset with questions (sums removed), and to model without the questions. 
+
+### Base Data
+For the initial SVM model we will take the dataset with the ADHD and Mood Disorder questions removed. The totals for each remain within the dataset.
+```{r}
+adhd_raw2 <- adhd_raw %>% select(-MD.TOTAL, -ADHD.Total, -Initial, -Psych.meds.)
+adhd_raw2 <- adhd_raw2[complete.cases(adhd_raw2), ]
+adhd_raw2$Suicide <- as.factor(adhd_raw2$Suicide)
+set.seed(55)
+trainIndex <- createDataPartition(adhd_raw2$Suicide, p = .8, list = FALSE, times = 1)
+adhd_base_training <- adhd_raw2[ trainIndex,]
+adhd_base_testing <- adhd_raw2[-trainIndex,]
+head(adhd_raw2)
+```
+
+
+```{r}
+svm_base_m <- tune(svm, Suicide ~., data = adhd_base_training, ranges=list(
+  kernel=c("linear", "polynomial", "radial", "sigmoid"),
+  cost=2^(1:8),
+  epsilon = seq(0,1,0.1)))
+
+svm_bm_best <- svm_base_m$best.model
+svm_base_pred <- predict(svm_bm_best, newdata = adhd_base_testing, type="class")
+svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
+
+
+base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
+                     Features=ncol(adhd_base_training)-1,
+                      Cumulative_Proportion=100)
+
+base_method
+```
+
+
+
+### Questions Discarded
+The next SVM model we will take the dataset with the ADHD and Mood Disorder questions removed. The totals for each remain within the dataset.
 ```{r}
 adhd.complete2 <- adhd.red.complete
 adhd.complete2$Suicide <- as.factor(adhd.complete2$Suicide)
@@ -425,24 +415,33 @@ set.seed(55)
 trainIndex <- createDataPartition(adhd.complete2$Suicide, p = .8, list = FALSE, times = 1)
 adhd.training <- adhd.complete2[ trainIndex,]
 adhd.testing  <- adhd.complete2[-trainIndex,]
+head(adhd.complete2)
 ```
 
+
+Predicting gives us an accuracy there is fairly close to the training accuracy
 ```{r}
 svm_m <- tune(svm, Suicide ~., data = adhd.training, ranges=list(
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
-  cost=2^(2:8),
+  cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-summary(svm_m)
-```
 
-```{r}
 svm_m_best <- svm_m$best.model
 svm_pred <- predict(svm_m_best, newdata = adhd.testing, type="class")
 svm_cm <- confusionMatrix(svm_pred, adhd.testing$Suicide)
-svm_cm$table
-sum(diag(svm_cm$table))/sum(svm_cm$table)
+
+
+noquestions_method <- cbind(Reduction_Method = "Questions Removed", svm_m$best.parameters, Training_Accuracy = 1-svm_m$best.performance, Testing_Accuracy = sum(diag(svm_cm$table))/sum(svm_cm$table),
+                     Features=ncol(adhd.testing)-1,
+                      Cumulative_Proportion=100)
+
+noquestions_method
 ```
-## SVM - Via PCA
+
+
+
+## SVM (PCA Reduction)
+In the PCA Reduction approach we will aim to run SVM models by first reducing the dimensionality of the feature set. The reduced feature space will then be passed for prediction of the Suicide class via a SVM models. 
 ```{r}
 adhd_raw2 <- adhd_raw %>% select(-MD.TOTAL, -ADHD.Total, -Initial, -Psych.meds.)
 adhd_raw2 <- adhd_raw2[complete.cases(adhd_raw2), ]
@@ -451,55 +450,154 @@ set.seed(55)
 trainIndex <- createDataPartition(adhd_raw2$Suicide, p = .8, list = FALSE, times = 1)
 adhd_pca.training <- adhd_raw2[ trainIndex,]
 adhd_pca.testing  <- adhd_raw2[-trainIndex,]
+head(adhd_raw2)
 ```
+We run the PCA model with normalizing and centering the input on a normal distribution since PCA will perform a transformation of the unit vectors into a different feature space. The PCA model has transformed the original feature space into 49 principal components, with 95% variance in the dataset cumulatively explained by 34 Principle Components. We check for normality and outliers, since we scaled the the original features, the qqplot should be normal as well, which look farily normal.
 
 ```{r}
 svm_pca_m <- prcomp(select(adhd_pca.training, -Suicide), center = TRUE, scale = TRUE)
 summary(svm_pca_m)
 
-```
-```{r}
-fviz_eig(svm_pca_m, addlabels = T)
-
-#check for normality and outliers, since we scaled the the original features, the qqplot should be normal as well
 qqnorm(svm_pca_m[["x"]][,1])
 ```
+
+The PCA Biplot of the first two principal component shows that there is a large amount of overlap between the two suicide classes and poor separability  of classes just given these two components
+
 ```{r}
-fviz_pca_ind(svm_pca_m, label="none", 
+
+fviz_pca_biplot(svm_pca_m, label="var",
              habillage = adhd_pca.training$Suicide,
              addEllipses = TRUE, palette = "jco")
+
 ```
+To determine the number of principal components (factors/features) to keep, we look at three established methods; The Kaiser Rule, Scree Method, and Cumulative Proportion of Variance Explained 
+  
+### Kaiser Rule
+The Kaiser rule states that the optimal factor reduction is achieved by selecting Principal Components that have an eigenvalue greater than 1. An eigenvalue of one contains the same information as one variable  
+  
+Below are all dimensions/Principal Components that have the an eign value that's greater than one
 ```{r}
 #Kaiser rule: select PCs with eigenvalues of at least 1
 reduced_dim <- get_eigenvalue(svm_pca_m) %>% filter(eigenvalue > 1)
 reduced_dim
 ```
+Create training dataset using reduced dimensions via the Kaiser Rule combined with the respective Suicide class
 ```{r}
 
-adhd_pca.training_reduced <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim))]), Suicide = adhd_pca.training$Suicide)
-head(adhd_pca.training_reduced)
+adhd_pca.training_kaiser <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim))]), Suicide = adhd_pca.training$Suicide)
+head(adhd_pca.training_kaiser)
 
 ```
+
+Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the Kaiser Rule
 ```{r}
-#rotate the test data using the predict function in the same rotation as the training data
-# rotation done with PC that have eigenvalue < 1 dropped
-adhd_pca.testing_reduced <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim))]),Suicide = adhd_pca.testing$Suicide)
-head(adhd_pca.testing_reduced)
+
+adhd_pca.testing_kaiser <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim))]),Suicide = adhd_pca.testing$Suicide)
+
+head(adhd_pca.testing_kaiser)
 ```
+
+Below are the optimal tuned hyper-parameters with training and testing accuracy
 ```{r}
-svm_pca_m <- tune(svm, Suicide ~., data = adhd_pca.training_reduced, ranges=list(
+svm_pca_kaiser <- tune(svm, Suicide ~., data = adhd_pca.training_kaiser, ranges=list(
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
-  cost=2^(2:8),
+  cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-summary(svm_pca_m)
+
+svm_pca_kaiser_best <- svm_pca_kaiser$best.model
+svm_pca_kaiser_pred <- predict(svm_pca_kaiser_best, newdata = adhd_pca.testing_kaiser, type="class")
+svm_pca_kaiser_cm <- confusionMatrix(svm_pca_kaiser_pred, adhd_pca.testing_kaiser$Suicide)
+
+kaiser_method <- cbind(Reduction_Method = "Kaiser Rule",svm_pca_kaiser$best.parameters, Training_Accuracy = 1-svm_pca_kaiser$best.performance, 
+                       Testing_Accuracy = (sum(diag(svm_pca_kaiser_cm$table))/sum(svm_pca_kaiser_cm$table)),
+                       Features=ncol(adhd_pca.testing_kaiser)-1,
+                       Cumulative_Proportion=max(reduced_dim["cumulative.variance.percent"]))
+
+kaiser_method
 ```
+### Scree Polt Method
+The Scree Plot suggests that the best number of components to reduce a dataset to is the component that forms an "elbow". The scree plot shows that by the 3rd Principal component, additional components successively diminish in explaining the variance. The 3rd component looks like there the "elbow" forms
 
 ```{r}
-svm_pca_m_best <- svm_pca_m$best.model
-svm_pca_pred <- predict(svm_pca_m_best, newdata = adhd_pca.testing_reduced, type="class")
-svm_pca_cm <- confusionMatrix(svm_pca_pred, adhd_pca.testing_reduced$Suicide)
-svm_pca_cm$table
-sum(diag(svm_pca_cm$table))/sum(svm_pca_cm$table)
+fviz_eig(svm_pca_m, addlabels = T)
+```
+Create training dataset using reduced dimensions via the Kaiser Rule combined with the respective Suicide class
+```{r}
+
+adhd_pca.training_scree <- cbind(as.data.frame(svm_pca_m$x[,c(1:3)]), Suicide = adhd_pca.training$Suicide)
+head(adhd_pca.training_scree)
 ```
 
+Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the scree Method
+
+```{r}
+
+adhd_pca.testing_scree <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,1:3]),Suicide = adhd_pca.testing$Suicide)
+head(adhd_pca.testing_scree)
+```
+
+Below are the optimal tuned hyper-parameters with training and testing accuracy
+```{r}
+svm_pca_scree <- tune(svm, Suicide ~., data = adhd_pca.training_scree, ranges=list(
+  kernel=c("linear", "polynomial", "radial", "sigmoid"),
+  cost=2^(1:8),
+  epsilon = seq(0,1,0.1)))
+
+svm_pca_scree_best <- svm_pca_scree$best.model
+svm_pca_scree_pred <- predict(svm_pca_scree_best, newdata = adhd_pca.testing_scree, type="class")
+svm_pca_scree_cm <- confusionMatrix(svm_pca_scree_pred, adhd_pca.testing_scree$Suicide)
+
+scree_method <- cbind(Reduction_Method = "Scree Method", svm_pca_scree$best.parameters, Training_Accuracy = 1-svm_pca_scree$best.performance, Testing_Accuracy = sum(diag(svm_pca_scree_cm$table))/sum(svm_pca_scree_cm$table),
+                      Features=ncol(adhd_pca.testing_scree)-1,
+                      Cumulative_Proportion=(get_eigenvalue(svm_pca_m) %>% select(cumulative.variance.percent))[3,])
+
+scree_method
+```
+### Variance Explained Method
+Another method of component selection is ensuring that at least two-thirds of the variance is explained by the reduced feature set. In this case we will opt to select at least 90% of cumulative variance explained. This reduces to 27 dimensions
+```{r}
+reduced_dim_90 <- get_eigenvalue(svm_pca_m) %>% filter(cumulative.variance.percent < 91)
+reduced_dim_90
+```
+
+Create training dataset using reduced dimensions via the Proportion of Variance Explained Method combined with the respective Suicide class
+```{r}
+
+adhd_pca.training_90var <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim_90))]), Suicide = adhd_pca.training$Suicide)
+head(adhd_pca.training_90var)
+
+```
+Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the Proportion of Variance Explained Method
+```{r}
+
+adhd_pca.testing_90var <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim_90))]),Suicide = adhd_pca.testing$Suicide)
+
+head(adhd_pca.testing_90var)
+```
+Below are the optimal tuned hyper-parameters with training and testing accuracy
+```{r}
+svm_pca_90var <- tune(svm, Suicide ~., data = adhd_pca.training_90var, ranges=list(
+  kernel=c("linear", "polynomial", "radial", "sigmoid"),
+  cost=2^(1:8),
+  epsilon = seq(0,1,0.1)))
+
+svm_pca_90var_best <- svm_pca_90var$best.model
+svm_pca_90var_pred <- predict(svm_pca_90var_best, newdata = adhd_pca.testing_90var, type="class")
+svm_pca_90var_cm <- confusionMatrix(svm_pca_90var_pred, adhd_pca.testing_90var$Suicide)
+
+method_90var <- cbind(Reduction_Method = "Proportion of Variance Explained", svm_pca_90var$best.parameters, Training_Accuracy = 1-svm_pca_90var$best.performance, Testing_Accuracy = sum(diag(svm_pca_90var_cm$table))/sum(svm_pca_90var_cm$table),
+                      Features=ncol(adhd_pca.testing_90var)-1,
+                      Cumulative_Proportion=max(reduced_dim_90["cumulative.variance.percent"]))
+
+method_90var
+```
+## SVM Model Selection
+It is interesting to see that the Training Accuracy for the Questions Removed SVM model had the lowest training accuracy but the highest testing accuracy where both the testing and training accuracy are fairly close. This represents a model that is the least over fitted. While using the Questions Removed model produced the best accuracy, in reality this may not be possible and it is computationally best to reduce the dataset when working with a large set of features. In this scenario the Scree Method has be best results with the least amount of Principal Components and would be the model of selection as it is the the most efficient
+```{r}
+svm_models <- rbind(base_method, noquestions_method)
+svm_models <- rbind(svm_models, kaiser_method)
+svm_models <- rbind(svm_models, scree_method)
+svm_models <- rbind(svm_models, method_90var)
+svm_models
+```
 
