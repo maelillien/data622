@@ -111,13 +111,21 @@ adhd.full.complete <- adhd.full.complete[complete.cases(adhd.full.complete),]
 
 ## Data Exploration
 
+The plots below explore the distributions of subsets of the data. 
+
+The various distribution of the responses to the ADHD questionnaire are displayed below. Some variables are unimodal, others bimodal, some are centered and others skewed. Reference should be made to the survey questions in order to gain deeper insight of these distributions. 
+
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd.full %>% dplyr::select(contains('ADHD.Q')) %>%  tidyr::gather(key = "variable", value = "measurement",everything()) %>% 
+  arrange(desc(variable)) %>%
   ggplot(aes(measurement)) + geom_bar(position=position_dodge(), fill="steelblue") + 
   facet_wrap(~variable, scales = "free") +
   theme_minimal() +
   ggtitle("Distribution of ADHD Questionnaire Responses")
 ```
+
+For the Mood Disorder questionnaire, the majority of the binary responses were 1. The classes are fairly balance expect for a few questions. Q2 is particularly unbalanced. The distribution of the responses to Q3 is highly skewed to the left tail.  
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd.full %>% dplyr::select(contains('MD.Q'))  %>%  tidyr::gather(key = "variable", value = "measurement",everything()) %>% 
@@ -126,6 +134,17 @@ adhd.full %>% dplyr::select(contains('MD.Q'))  %>%  tidyr::gather(key = "variabl
   theme_minimal() +
   ggtitle("Distribution of Mood Disorder Questionnaire Responses")
 ```
+
+#### Distribution of Binary and Ordinal Variables
+
+A few observations on the binary and ordinal variables:
+
+  - Most participants have not been abused but a noteworthy number of paricipates have suffered emotional, physical and sexual abuse or a combination of the three. 
+  - Alcohol, Cocaine and THC are similarly distributed with the highest densities at the extremes of the range
+  - The majority of participants have a history of disorderly conduct, some were violent but only few have received a court order
+  - Opiods, Stimulants and Sedatives which are fairly similar in nature are similarly distributed with mostly no use
+  - Sex is not quite balanced and Race is mostly limited to two classes
+  - A significant proportion of the sample population attempted suicide
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd.full %>% dplyr::select(!contains('.Q')) %>%  
@@ -137,11 +156,18 @@ adhd.full %>% dplyr::select(!contains('.Q')) %>%
   ggtitle("Distribution of Binary and Ordinal Variables")
 ```
 
+#### Discrete Variables
+
+  - The ADHDTotal variable is unimodal is fairly spread out over the middle of the range 20-45
+  - Age is bimodal with peaks at 25 and 45 years of age
+  - Education is also unimodal with a peak at 12 which which corresponds to finishing high school
+  - MDTotal is unimodel but skewed to the left tail with a mean around 11
+
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 adhd.full %>% dplyr::select(!contains('.Q')) %>%  
   dplyr::select(c('Age','ADHDTotal','MDTotal','Education')) %>%
   tidyr::gather(key = "variable", value = "measurement",everything()) %>% 
-  ggplot(aes(measurement)) + geom_bar(position=position_dodge(), fill="steelblue") + 
+  ggplot(aes(measurement)) + geom_density(fill="steelblue") + 
   facet_wrap(~variable, scales = "free") +
   theme_minimal() +
   ggtitle("Distribution of Discrete Variables")
