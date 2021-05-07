@@ -1,0 +1,56 @@
+---
+title: "DATA 622 Final Project"
+author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
+date: "5/7/2021"
+output: 
+  html_document:
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+    toc: true
+    number_section: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+library(skimr)
+library(tidyverse)
+library(readr)
+library(dplyr)
+```
+
+# Data
+
+```{r}
+mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
+```
+
+```{r}
+pixels_gathered <- mnist_raw %>%  head(10000) %>%  rename(label = X1) %>%  mutate(instance = row_number()) %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2,         x = pixel %% 28,         y = 28 - pixel %/% 28)
+pixels_gathered
+```
+
+```{r}
+theme_set(theme_light())
+pixels_gathered %>%  filter(instance <= 12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label)
+```
+
+
+# Loan Approval Dataset
+
+# Data Exploration
+
+## Data Processing
+
+# Modeling
+
+
