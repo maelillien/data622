@@ -482,25 +482,25 @@ fviz_pca_biplot(res.pca,
 
 # Support Vector Machines
 
-The primary goal of Support Vector Machines (SVM) is to determine a decision boundary between classes where the separating margin is maximized. There can be an infinite number of decision boundaries between clases. The points from each class closest to the decision boundary are called Support Vectors. SVM looks to find an optimal decision boundary such that Support Vectors from each class deliniate a maximal margin subject to some constraints. Classification of a new unseen point is determined by which side of the decision boundary the point resides on.  
+The primary goal of Support Vector Machines (SVM) is to determine a decision boundary between classes where the separating margin is maximized. There can be an infinite number of decision boundaries between classes. The points from each class closest to the decision boundary are called Support Vectors. SVM looks to find an optimal decision boundary such that Support Vectors from each class delineate a maximal margin subject to some constraints. Classification of a new unseen point is determined by which side of the decision boundary the point resides on.  
   
-For data that is not linearly separable due or overlapping, SVM utilizes kernel functions (also called kernel trick) to transform the feature space from n dimensions to a higher n+y dimensions to achieve better separation of classes. The decision boundary in this higher dimensional sapce is a separating hyperplane.
+For data that is not linearly separable due or overlapping, SVM utilizes kernel functions (also called kernel trick) to transform the feature space from n dimensions to a higher n+y dimensions to achieve better separation of classes. The decision boundary in this higher dimensional space is a separating hyperplane.
 
-The strategy that we will use for SVM is to compare several models specifically with and without Principal Component Analysis dimensionality reduction. For each model that is run  we tune the model parameters via a gridsearch of:
+The strategy that we will use for SVM is to compare several models specifically with and without Principal Component Analysis dimensionality reduction. For each model that is run we tune the model parameters via a gridsearch of:
   
 - Kernel: Linear, Polynomial, Radial, and Sigmoid  
-- Cost Function: Tune to control he penalty imposed on observations that lie outside the epsilon margin by penalizing predictions that are farther than the desired output
+- Cost Function: Tune to control the penalty imposed on observations that lie outside the epsilon margin by penalizing predictions that are farther than the desired output
 - Epsilon Intensive Loss Function: epsilon margin value  
   
-The models will perform a 10-fold Cross-validation to prevent overfitting and arrive at the overall best parameters and accuracy rate below
+The models will perform a 10-fold Cross-validation to prevent overfitting and arrive at the overall best parameters and accuracy rate below. Since SVM is a supervised learning method, we require a dependent variable to model. In this case, it will be the Suicide feature.
+
 
 ## SVM(Dataset)
 
-Similarly to the other sections of this work, the SVM approach to the dataset is approached in two ways, by modeling using the entire dataset with questions (sums removed), and by modeling without the individual questions. Since SVM is a supervised learning method, we require a dependent variable to model. In this case, it will be Suicide.
-
+The dataset approach will be done by building an SVM model without any without any mathematical dimensionality reduction.
 ### Base Data
 
-For the initial SVM model we will take the dataset with the ADHD and Mood Disorder questions removed. The totals for each remain within the dataset.
+For the initial SVM model will take the entire dataset as given. The ADHD and Mood Disorder total columns have been removed as they will be colinear with some of or all of the individual questions. In additional Psych Meds has been removed because of the large number of incomplete values for this feature
 ```{r}
 adhd_raw2 <- adhd_raw %>% select(-MD.TOTAL, -ADHD.Total, -Initial, -Psych.meds.)
 adhd_raw2 <- adhd_raw2[complete.cases(adhd_raw2), ]
@@ -511,23 +511,19 @@ adhd_base_training <- adhd_raw2[ trainIndex,]
 adhd_base_testing <- adhd_raw2[-trainIndex,]
 ```
 
-The resulting model based on the full version of the dataset is shown below. With a radial kernel and C=2 we reach 71.9% training accuracy but a lower testing accuracy of 60.7%.
+The resulting model based on the feature aggregated version of the dataset is shown below. With a radial kernel and C=2 we reach 71.9% training accuracy but a lower testing accuracy of 60.7%.
 
 ```{r}
 svm_base_m <- tune(svm, Suicide ~., data = adhd_base_training, ranges=list(
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
   cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-
 svm_bm_best <- svm_base_m$best.model
 svm_base_pred <- predict(svm_bm_best, newdata = adhd_base_testing, type="class")
 svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
-
-
 base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
                      Features=ncol(adhd_base_training)-1,
                       Cumulative_Proportion=100)
-
 base_method
 ```
 
@@ -535,12 +531,11 @@ base_method
 
 ### Reduced Dataset
 
-The next SVM model we will take the dataset with the ADHD and Mood Disorder questions removed. The totals for each remain within the dataset.
+The next SVM model we will take the dataset with the ADHD and Mood Disorder questions removed. The totals for each remain within the dataset. In essence we have reduced dimensinality here, but we've done so with simple feature aggregation. 
 
 ```{r}
 adhd.complete2 <- adhd.red.complete
 adhd.complete2$Suicide <- as.factor(adhd.complete2$Suicide)
-
 set.seed(55)
 trainIndex <- createDataPartition(adhd.complete2$Suicide, p = .8, list = FALSE, times = 1)
 adhd.training <- adhd.complete2[ trainIndex,]
@@ -554,16 +549,12 @@ svm_m <- tune(svm, Suicide ~., data = adhd.training, ranges=list(
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
   cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-
 svm_m_best <- svm_m$best.model
 svm_pred <- predict(svm_m_best, newdata = adhd.testing, type="class")
 svm_cm <- confusionMatrix(svm_pred, adhd.testing$Suicide)
-
-
 noquestions_method <- cbind(Reduction_Method = "Reduced Dataset", svm_m$best.parameters, Training_Accuracy = 1-svm_m$best.performance, Testing_Accuracy = sum(diag(svm_cm$table))/sum(svm_cm$table),
                      Features=ncol(adhd.testing)-1,
                       Cumulative_Proportion=100)
-
 noquestions_method
 ```
 
@@ -582,31 +573,32 @@ adhd_pca.training <- adhd_raw2[ trainIndex,]
 adhd_pca.testing  <- adhd_raw2[-trainIndex,]
 head(adhd_raw2)
 ```
-We run the PCA model with normalizing and centering the input on a normal distribution since PCA will perform a transformation of the unit vectors into a different feature space. The PCA model has transformed the original feature space into 49 principal components, with 95% variance in the dataset cumulatively explained by 34 Principle Components. We check for normality and outliers, since we scaled the the original features, the qqplot should be normal as well, which look farily normal.
+We run the PCA model with normalizing and centering the input on a normal distribution since PCA will perform a transformation of the unit vectors into a different feature space. The PCA model has transformed the original feature space into 49 principal components, with 95% variance in the dataset cumulatively explained by 34 Principle Components. We check for normality and outliers, since we scaled the the original features, the qqplot should be normal as well, which look fairly normal.
 
 ```{r}
 svm_pca_m <- prcomp(select(adhd_pca.training, -Suicide), center = TRUE, scale = TRUE)
 summary(svm_pca_m)
-
 qqnorm(svm_pca_m[["x"]][,1])
 ```
 
 The PCA Biplot of the first two principal component shows that there is a large amount of overlap between the two suicide classes and poor separability  of classes just given these two components
 
 ```{r}
-
 fviz_pca_biplot(svm_pca_m, label="var",
              habillage = adhd_pca.training$Suicide,
              addEllipses = TRUE, palette = "jco")
-
 ```
-To determine the number of principal components (factors/features) to keep, we look at three established methods; The Kaiser Rule, Scree Method, and Cumulative Proportion of Variance Explained 
+To determine the number of principal components (factors/features) to keep, we look at three established methods:  
+  
+- The Kaiser Rule  
+- Scree Method  
+- Cumulative Proportion of Variance Explained Method
   
 ### Kaiser Rule
 
-The Kaiser rule states that the optimal factor reduction is achieved by selecting Principal Components that have an eigenvalue greater than 1. An eigenvalue of one contains the same information as one variable  
+The Kaiser rule states that the optimal factor reduction is achieved by selecting Principal Components that have an eigenvalue greater than 1. An eigenvalue of 1 contains the same information as 1 variable  
   
-Below are all dimensions/Principal Components that have the an eign value that's greater than one
+Below are all dimensions/Principal Components that have the an eigenvalue that's greater than 1
 ```{r}
 #Kaiser rule: select PCs with eigenvalues of at least 1
 reduced_dim <- get_eigenvalue(svm_pca_m) %>% filter(eigenvalue > 1)
@@ -614,17 +606,13 @@ reduced_dim
 ```
 Create training dataset using reduced dimensions via the Kaiser Rule combined with the respective Suicide class
 ```{r}
-
 adhd_pca.training_kaiser <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim))]), Suicide = adhd_pca.training$Suicide)
 head(adhd_pca.training_kaiser)
-
 ```
 
 Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the Kaiser Rule
 ```{r}
-
 adhd_pca.testing_kaiser <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim))]),Suicide = adhd_pca.testing$Suicide)
-
 head(adhd_pca.testing_kaiser)
 ```
 
@@ -634,27 +622,23 @@ svm_pca_kaiser <- tune(svm, Suicide ~., data = adhd_pca.training_kaiser, ranges=
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
   cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-
 svm_pca_kaiser_best <- svm_pca_kaiser$best.model
 svm_pca_kaiser_pred <- predict(svm_pca_kaiser_best, newdata = adhd_pca.testing_kaiser, type="class")
 svm_pca_kaiser_cm <- confusionMatrix(svm_pca_kaiser_pred, adhd_pca.testing_kaiser$Suicide)
-
 kaiser_method <- cbind(Reduction_Method = "Kaiser Rule",svm_pca_kaiser$best.parameters, Training_Accuracy = 1-svm_pca_kaiser$best.performance, 
                        Testing_Accuracy = (sum(diag(svm_pca_kaiser_cm$table))/sum(svm_pca_kaiser_cm$table)),
                        Features=ncol(adhd_pca.testing_kaiser)-1,
                        Cumulative_Proportion=max(reduced_dim["cumulative.variance.percent"]))
-
 kaiser_method
 ```
 ### Scree Polt Method
-The Scree Plot suggests that the best number of components to reduce a dataset to is the component that forms an "elbow". The scree plot shows that by the 3rd Principal component, additional components successively diminish in explaining the variance. The 3rd component looks like there the "elbow" forms
-
+The Scree Plot suggests that the best number of components to reduce a dataset by is the component that forms an "elbow". The scree plot shows that after the 3rd Principal component, additional components successively diminish in explaining the variance. The 3rd component also looks like where the "elbow" forms. Therefore, according to the Scree method, in this case we should choose to just keep the first 3 Principal Components and discard the rest of the data.  
+  
 ```{r}
 fviz_eig(svm_pca_m, addlabels = T)
 ```
 Create training dataset using reduced dimensions via the Kaiser Rule combined with the respective Suicide class
 ```{r}
-
 adhd_pca.training_scree <- cbind(as.data.frame(svm_pca_m$x[,c(1:3)]), Suicide = adhd_pca.training$Suicide)
 head(adhd_pca.training_scree)
 ```
@@ -662,7 +646,6 @@ head(adhd_pca.training_scree)
 Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the scree Method
 
 ```{r}
-
 adhd_pca.testing_scree <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,1:3]),Suicide = adhd_pca.testing$Suicide)
 head(adhd_pca.testing_scree)
 ```
@@ -674,19 +657,17 @@ svm_pca_scree <- tune(svm, Suicide ~., data = adhd_pca.training_scree, ranges=li
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
   cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-
 svm_pca_scree_best <- svm_pca_scree$best.model
 svm_pca_scree_pred <- predict(svm_pca_scree_best, newdata = adhd_pca.testing_scree, type="class")
 svm_pca_scree_cm <- confusionMatrix(svm_pca_scree_pred, adhd_pca.testing_scree$Suicide)
-
 scree_method <- cbind(Reduction_Method = "Scree Method", svm_pca_scree$best.parameters, Training_Accuracy = 1-svm_pca_scree$best.performance, Testing_Accuracy = sum(diag(svm_pca_scree_cm$table))/sum(svm_pca_scree_cm$table),
                       Features=ncol(adhd_pca.testing_scree)-1,
                       Cumulative_Proportion=(get_eigenvalue(svm_pca_m) %>% select(cumulative.variance.percent))[3,])
-
 scree_method
 ```
 ### Variance Explained Method
-Another method of component selection is ensuring that at least two-thirds of the variance is explained by the reduced feature set. In this case we will opt to select at least 90% of cumulative variance explained. This reduces to 27 dimensions
+Another method of component selection is ensuring that at least two-thirds of the variance is explained by the reduced feature set. In order words keep the number of Principal Components that cumulatively explain two-thirds of the variation and discard the Principal Components after the two-thirds mark. In this case we will opt to select at least 90% of cumulative variance explained. This reduces to 27 dimensions.  
+  
 ```{r}
 reduced_dim_90 <- get_eigenvalue(svm_pca_m) %>% filter(cumulative.variance.percent < 91)
 reduced_dim_90
@@ -694,16 +675,12 @@ reduced_dim_90
 
 Create training dataset using reduced dimensions via the Proportion of Variance Explained Method combined with the respective Suicide class
 ```{r}
-
 adhd_pca.training_90var <- cbind(as.data.frame(svm_pca_m$x[,c(1:nrow(reduced_dim_90))]), Suicide = adhd_pca.training$Suicide)
 head(adhd_pca.training_90var)
-
 ```
 Rotate the test data using the predict function in the same rotation as the training data with the dropped components via the Proportion of Variance Explained Method
 ```{r}
-
 adhd_pca.testing_90var <- cbind(as.data.frame(predict(svm_pca_m, newdata = select(adhd_pca.testing, -Suicide))[,c(1:nrow(reduced_dim_90))]),Suicide = adhd_pca.testing$Suicide)
-
 head(adhd_pca.testing_90var)
 ```
 Below are the optimal tuned hyper-parameters with training and testing accuracy
@@ -712,20 +689,17 @@ svm_pca_90var <- tune(svm, Suicide ~., data = adhd_pca.training_90var, ranges=li
   kernel=c("linear", "polynomial", "radial", "sigmoid"),
   cost=2^(1:8),
   epsilon = seq(0,1,0.1)))
-
 svm_pca_90var_best <- svm_pca_90var$best.model
 svm_pca_90var_pred <- predict(svm_pca_90var_best, newdata = adhd_pca.testing_90var, type="class")
 svm_pca_90var_cm <- confusionMatrix(svm_pca_90var_pred, adhd_pca.testing_90var$Suicide)
-
 method_90var <- cbind(Reduction_Method = "Proportion of Variance Explained", svm_pca_90var$best.parameters, Training_Accuracy = 1-svm_pca_90var$best.performance, Testing_Accuracy = sum(diag(svm_pca_90var_cm$table))/sum(svm_pca_90var_cm$table),
                       Features=ncol(adhd_pca.testing_90var)-1,
                       Cumulative_Proportion=max(reduced_dim_90["cumulative.variance.percent"]))
-
 method_90var
 ```
 ## SVM Model Selection
 
-It is interesting to see that the Training Accuracy for the Questions Removed SVM model had the lowest training accuracy but the highest testing accuracy where both the testing and training accuracy are fairly close. This represents a model that is the least over fitted. While using the Questions Removed model produced the best accuracy, in reality this may not be possible and it is computationally best to reduce the dataset when working with a large set of features. In this scenario the Scree Method has be best results with the least amount of Principal Components and would be the model of selection as it is the the most efficient
+It is interesting to see that the Training Accuracy for the Questions Removed SVM model had the lowest training accuracy but the highest testing accuracy where both the testing and training accuracy are fairly close. This represents a model that is the least over fitted. While using the Questions Removed model produced the best accuracy, in reality this may not be possible and it may be computationally best to reduce the dataset when working with a large set of features. In this scenario the Scree Method has the best results with the least number of Principal Components and would be the model of selection as it is the most efficient. 
 
 ```{r}
 svm_models <- rbind(base_method, noquestions_method)
@@ -734,4 +708,3 @@ svm_models <- rbind(svm_models, scree_method)
 svm_models <- rbind(svm_models, method_90var)
 svm_models
 ```
-
