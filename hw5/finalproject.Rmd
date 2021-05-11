@@ -30,27 +30,113 @@ library(dplyr)
 
 # Data
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
 ```
 
 ```{r}
-pixels_gathered <- mnist_raw %>%  head(10000) %>%  rename(label = X1) %>%  mutate(instance = row_number()) %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2,         x = pixel %% 28,         y = 28 - pixel %/% 28)
-pixels_gathered
+# Reduce the dataset down from 60,000 observations
+mnist_subset <- mnist_raw %>%  head(10000)
+# Relabel X1 and add instance number
+mnist_subset <- mnist_subset  %>%  rename(label = X1) %>%  mutate(instance = row_number())
+# Gather columns into x, y values
+mnist_subset 
 ```
 
 ```{r}
-theme_set(theme_light())
-pixels_gathered %>%  filter(instance <= 12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label)
+X <- mnist_subset %>% select(contains('X'))
+y <- mnist_subset$label 
 ```
 
 
-# Loan Approval Dataset
+```{r}
+pixels_gathered <- mnist_subset %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2, x = pixel %% 28, y = 28 - pixel %/% 28)
+pixels_gathered
+```
+
+
+Example instances
+
+```{r}
+theme_set(theme_light())
+pixels_gathered %>%  filter(instance <= 12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label) + scale_fill_gradient(low = "white", high = "black")
+```
+
 
 # Data Exploration
 
+Fairly even distribution. Can also try random sampling instead of head(10000) at the top.
+
+```{r}
+ggplot(mnist_subset, aes(label)) + geom_bar()
+```
+
+The majority of points are either 0 (white) or 255 (black). Most values are not useful. Dimensionality reduction
+
+
+```{r}
+ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256)
+```
+
+```{r}
+pixel_summary <- pixels_gathered %>%  group_by(x, y, label) %>%  summarize(mean_value = mean(value)) %>%  ungroup()
+```
+
+Average numbers representations. Gives a good idea of variability
+
+
+
+```{r}
+pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_fill_gradient2(low = "white", high = "black", mid = "gray", midpoint = 127.5) +  facet_wrap(~ label, nrow = 2) +  labs(title = "Average value of each pixel in 10 MNIST digits",       fill = "Average value") +  theme_void()
+```
+
+```{r}
+digit_differences <- crossing(compare1 = 0:9, compare2 = 0:9) %>%  filter(compare1 != compare2) %>%  mutate(negative = compare1, positive = compare2) %>%  gather(class, label, positive, negative) %>%  inner_join(pixel_summary, by = "label") %>%  select(-label) %>%  spread(class, mean_value)
+ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() +  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +  facet_grid(compare2 ~ compare1) +  theme_void() +  labs(title = "Pixels that distinguish pairs of MNIST images",       subtitle = "Red means the pixel is darker for that row's digit, and blue means the pixel is darker for that column's digit.")
+
+```
+
+```{r}
+library(caret)
+nzv <- nearZeroVar(X)
+image(matrix(1:784 %in% nzv, 28, 28))
+```
+
+
 ## Data Processing
 
+Dimensionality Reduction
+
+Near Zero Variance
+
+PCA
+
+
 # Modeling
+
+```{r}
+# Data Partitioning
+set.seed(622)
+trainIndex <- createDataPartition(mnist_subset$instance, p = .8, list = FALSE, times = 1)
+X_train <- X[trainIndex,]
+y_train <- y[trainIndex]
+X_test <- X[-trainIndex,]
+y_test <- y[-trainIndex]
+```
+
+```{r}
+trControl <- trainControl(method  = "cv", number  = 5)
+
+knn.fit <- train(X_train, y_train,
+             method     = "knn",
+             tuneGrid   = expand.grid(k = 1:5),
+             trControl  = trControl)
+```
+
+```{r}
+plot(knn.fit)
+```
+
+
 
 
