@@ -98,9 +98,11 @@ ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() 
 
 ```{r}
 library(caret)
-nzv <- nearZeroVar(X)
-image(matrix(1:784 %in% nzv, 28, 28))
+nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
+image(matrix(1:784 %in% nonzero_var, 28, 28))
 ```
+
+
 
 
 ## Data Processing
@@ -108,6 +110,17 @@ image(matrix(1:784 %in% nzv, 28, 28))
 Dimensionality Reduction
 
 Near Zero Variance
+
+```{r}
+x <- nearZeroVar(X, saveMetrics = TRUE)
+x
+```
+
+```{r}
+mnist_subset_reduced <- mnist_subset[ , nonzero_var]
+```
+
+
 
 PCA
 
@@ -117,15 +130,18 @@ PCA
 ```{r}
 # Data Partitioning
 set.seed(622)
-trainIndex <- createDataPartition(mnist_subset$instance, p = .8, list = FALSE, times = 1)
+trainIndex <- createDataPartition(mnist_subset_reduced$label, p = .8, list = FALSE, times = 1)
 X_train <- X[trainIndex,]
 y_train <- y[trainIndex]
 X_test <- X[-trainIndex,]
 y_test <- y[-trainIndex]
+
+y_train <- as.factor(y_train)
+y_test <- as.factor(y_test)
 ```
 
 ```{r}
-trControl <- trainControl(method  = "cv", number  = 5)
+trControl <- trainControl(method  = "cv", number  = 3)
 
 knn.fit <- train(X_train, y_train,
              method     = "knn",
@@ -134,9 +150,21 @@ knn.fit <- train(X_train, y_train,
 ```
 
 ```{r}
+knn.fit
+```
+
+
+```{r}
 plot(knn.fit)
 ```
 
+```{r}
+knnPredict <- predict(knn.fit, newdata = X_test) 
+confusionMatrix(knnPredict, y_test)
+```
+```{r}
+
+```
 
 
 
