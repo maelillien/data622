@@ -36,7 +36,7 @@ mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_na
 
 ```{r}
 # Reduce the dataset down from 60,000 observations
-mnist_subset <- mnist_raw %>%  head(10000)
+mnist_subset <- mnist_raw %>%  head(5000)
 # Relabel X1 and add instance number
 mnist_subset <- mnist_subset  %>%  rename(label = X1) %>%  mutate(instance = row_number())
 # Gather columns into x, y values
@@ -55,7 +55,7 @@ pixels_gathered
 ```
 
 
-Example instances
+Example instances. Replace by 10x10 tile plot shoring 10 instance of 1 number for every row
 
 ```{r}
 theme_set(theme_light())
