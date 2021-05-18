@@ -26,12 +26,19 @@ library(skimr)
 library(tidyverse)
 library(readr)
 library(dplyr)
+library(caret)
+library(naivebayes)
+library(factoextra) # For PCA plots
+library(e1071)
+library(Rtsne)
+library(RColorBrewer)
 ```
 
 # Data
-
+[DC] - To add description of data
 ```{r message=FALSE, warning=FALSE}
 mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
+mnist_raw_test <- read_csv("https://pjreddie.com/media/files/mnist_test.csv", col_names = FALSE)
 ```
 
 ```{r}
@@ -93,21 +100,26 @@ pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_
 ```{r}
 digit_differences <- crossing(compare1 = 0:9, compare2 = 0:9) %>%  filter(compare1 != compare2) %>%  mutate(negative = compare1, positive = compare2) %>%  gather(class, label, positive, negative) %>%  inner_join(pixel_summary, by = "label") %>%  select(-label) %>%  spread(class, mean_value)
 ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() +  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +  facet_grid(compare2 ~ compare1) +  theme_void() +  labs(title = "Pixels that distinguish pairs of MNIST images",       subtitle = "Red means the pixel is darker for that row's digit, and blue means the pixel is darker for that column's digit.")
-
 ```
 
 ```{r}
-library(caret)
 nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
 image(matrix(1:784 %in% nonzero_var, 28, 28))
 ```
 
+T-SNE Visual
+```{r}
 
+tsne_v <- Rtsne(as.matrix(select(mnist_subset, -label)), dims=2, check_duplicates = FALSE, pca = TRUE, pca_scale = FALSE, theta = 0.1 , perplexity = 45)
+tsne_coords = data.frame(X=tsne_v$Y[,1], Y=tsne_v$Y[,2], Label=as.factor(mnist_subset$label))
+ggplot(tsne_coords, aes(x=X, y=Y, color=Label)) + geom_point(size = 1) + scale_color_brewer(palette = "Set3") + theme_dark()
+```
 
 
 ## Data Processing
 
 Dimensionality Reduction
+
 
 Near Zero Variance
 
@@ -122,11 +134,37 @@ mnist_subset_reduced <- mnist_subset[ , nonzero_var]
 
 
 
-PCA
+### PCA
+```{r}
+pca <- prcomp(select(mnist_raw, -X1), center = TRUE, scale = FALSE)
+summary(pca)
+qqnorm(pca[["x"]][,1])
 
+```
+```{r}
+pca %>% get_eigenvalue() %>% head(10)
+```
+```{r}
+pca %>% fviz_eig(addlabels = TRUE)
+```
+
+
+```{r}
+get_eigenvalue(pca) %>% filter(eigenvalue > 1)
+```
+
+```{r}
+reduced_dim_95 <- get_eigenvalue(pca) %>% filter(cumulative.variance.percent < 95.02)
+reduced_dim_95
+
+#mnist_pca_reduced <- cbind(as.data.frame(pca$x[,c(1:nrow(reduced_dim_95))]), Label = mnist_raw$X1)
+mnist_pca_reduced <- as.data.frame(pca$x[,c(1:nrow(reduced_dim_95))])
+head(mnist_pca_reduced)
+```
 
 # Modeling
 
+## KNN
 ```{r}
 # Data Partitioning
 set.seed(622)
@@ -135,14 +173,12 @@ X_train <- X[trainIndex,]
 y_train <- y[trainIndex]
 X_test <- X[-trainIndex,]
 y_test <- y[-trainIndex]
-
 y_train <- as.factor(y_train)
 y_test <- as.factor(y_test)
 ```
 
 ```{r}
 trControl <- trainControl(method  = "cv", number  = 3)
-
 knn.fit <- train(X_train, y_train,
              method     = "knn",
              tuneGrid   = expand.grid(k = 1:5),
@@ -163,8 +199,43 @@ knnPredict <- predict(knn.fit, newdata = X_test)
 confusionMatrix(knnPredict, y_test)
 ```
 ```{r}
+```
+
+## Multinomial Naive Bayes
+
+```{r}
+
+nb <- multinomial_naive_bayes(select(mnist_raw, -X1), as.factor(mnist_raw$X1), laplace=5)
+summary(nb)
+nb_pred <- predict(nb, newdata = data.matrix(select(mnist_raw_test, -X1)), type = "class")
+
 
 ```
 
+```{r}
+confusionMatrix(nb_pred, as.factor(mnist_raw_test$X1))
+
+```
+
+## Support Vector Machine
+```{r}
+# svm_base_m <- tune(svm, X1 ~., data = mnist_raw, ranges=list(
+#   kernel=c("linear", "polynomial", "radial", "sigmoid"),
+#   cost=2^(1:8),
+#   epsilon = seq(0,1,0.1)))
 
 
+
+#svm_m_best <- svm_base_m$best.model
+
+mnist_col_reduced <- mnist_raw[ ,colSums(mnist_raw) > 0]
+
+svm_m_best <- svm(as.factor(mnist_col_reduced$X1) ~., data = mnist_col_reduced, kernel = "linear", cost = 10, scale = FALSE)
+
+svm_base_pred <- predict(svm_m_best, newdata = adhd_base_testing, type="class")
+svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
+base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
+                     Features=ncol(adhd_base_training)-1,
+                      Cumulative_Proportion=100)
+base_method
+```
