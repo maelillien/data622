@@ -39,9 +39,7 @@ library(RColorBrewer)
 mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
 mnist_raw_test <- read_csv("https://pjreddie.com/media/files/mnist_test.csv", col_names = FALSE)
 ```
-
 The MNIST dataset is a set of handwritten numbers (digits) for use with supervised machine learning classification applications.The datset is fairly large with 70,000 observations where each observation is a handwritten digit from various subjects, therefore each handwritten digit of the same number can have differences due to penmanship style and variation within the same penmanship style.
-
 
 Each handwritten digit is on a 28x28 pixel image. The digits per observation range from 0 to 9 where each observation/digit in the 28x28 pixel have had their size normalized and have been centered on the image canvas. 
 
@@ -57,14 +55,14 @@ rotate <- function(x) t(apply(x, 2, rev))
 image(rotate(m2), col=gray((255:0)/255))
 ```
 
-Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. Below is an a matrix representation of the number 3
+Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. Below is an a matrix representation of the number 3 (observation 8)
 ```{r}
 cat("Label: ", mnist_raw$X1[x], "\n")
 m
 ```
-To represent each matrix as an observation, each digit matrix has been flattened (converting from a multidimensional array to a single dimensional array) such that each observation is a integer list of ($28x28=784$) length 784, where each value in the list is the pixel value (range 0-255). This list has an additional value which contains a number from the range 0-9 containing the label value of the number represented by the matrix, bringing the length to per observation 785.  
+To represent each matrix as an observation, each digit matrix has been flattened (converting from a multidimensional array to a single dimensional array) such that each observation is a integer list of ($28x28=784$) length 784, where each value in the list is the pixel value ranging from 0 to 255. This list has an additional value which contains a number from the range 0-9 containing the label value of the number represented by the image, bringing the length per observation to 785.  
   
-Bringing this all together,the dataset has 70,000 observations (60,000 training and 10,000 testing), 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. 
+Bringing this all together, the dataset has 70,000 observations (60,000 training and 10,000 testing), 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. 
 
 
 ```{r}
@@ -273,4 +271,23 @@ base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters,
                      Features=ncol(adhd_base_training)-1,
                       Cumulative_Proportion=100)
 base_method
+```
+
+##Random Forest
+
+```{r}
+rf <- randomForest(x = X_train , y = y_train, xtest = X_test, ntree = 200)
+rf
+```
+
+```{r}
+plot(rf)
+```
+
+Overall accuracy
+```{r}
+1 - mean(rf$err.rate)
+```
+```{r}
+varImpPlot(rf)
 ```
