@@ -143,8 +143,8 @@ X <- mnist_subset[ , -nonzero_var]
 
 
 
-## PCA
-Principal Comnponent Analysis (PCA) is a dimensionality reduction technique where a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.  
+## Principal Component Analysis
+Principal Component Analysis (PCA) is a dimensionality reduction technique where a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.  
   
 The method seeks to project the data into a lower dimensional space where each axis (or principal component) captures the most variability in the data subject to the condition of being uncorrelated to the other axes. This last condition is important for dimensionality reduction in the sense that large datasets can contain many correlated variables which hold no additional information.
 
