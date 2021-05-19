@@ -74,38 +74,33 @@ y <- mnist_subset$label
 
 The distribution of the draw of 5,000 samples from dataset is displayed below. The distribution is fairly even, though we note that the number 2 is largely more represented than the number 5.  
 
-```{r}
+```{r, fig.height = 8, fig.width = 8}
 ggplot(mnist_subset, aes(label)) + geom_bar(fill="steelblue")
 ```
 
-The majority of points are either 0 (white) or 255 (black). Most values are not useful. Dimensionality reduction
+The majority of points are either 0 (white) or 255 (black). Most values are not useful which suggest that some dimensionality reduction methods might be useful.
 
 
-```{r}
+```{r, fig.height = 8, fig.width = 8}
 ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256, fill="steelblue")
 ```
 
+The figure below is a representation of the average pixels values for the 10 digits in the dataset. The fuzzy, grey areas are zones of high variability. We can notice the most variability in the tails and long strokes of some digits. On the othre hand, some digits such as 0 and 1 have highler pixel concrentrations. 
+
 ```{r}
 pixel_summary <- pixels_gathered %>%  group_by(x, y, label) %>%  summarize(mean_value = mean(value)) %>%  ungroup()
+pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_fill_gradient2(low = "white", high = "black", mid = "gray", midpoint = 127.5) +  facet_wrap(~ label, nrow = 2) +  labs(title = "Average value of each pixel in 10 MNIST digits", fill = "Average value") +  theme_void()
 ```
 
-Average numbers representations. Gives a good idea of variability
-
-
-
-```{r}
-pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_fill_gradient2(low = "white", high = "black", mid = "gray", midpoint = 127.5) +  facet_wrap(~ label, nrow = 2) +  labs(title = "Average value of each pixel in 10 MNIST digits",       fill = "Average value") +  theme_void()
-```
+MI: thinking of removing this
 
 ```{r}
 digit_differences <- crossing(compare1 = 0:9, compare2 = 0:9) %>%  filter(compare1 != compare2) %>%  mutate(negative = compare1, positive = compare2) %>%  gather(class, label, positive, negative) %>%  inner_join(pixel_summary, by = "label") %>%  select(-label) %>%  spread(class, mean_value)
-ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() +  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +  facet_grid(compare2 ~ compare1) +  theme_void() +  labs(title = "Pixels that distinguish pairs of MNIST images",       subtitle = "Red means the pixel is darker for that row's digit, and blue means the pixel is darker for that column's digit.")
+ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() +  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +  facet_grid(compare2 ~ compare1) +  theme_void() +  labs(title = "Pixels that distinguish pairs of MNIST images")
 ```
 
-```{r}
-nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
-image(matrix(1:784 %in% nonzero_var, 28, 28))
-```
+
+
 ```{r}
 x <- 8
 cat("Label: ", mnist_raw$X1[x], "\n")
@@ -136,8 +131,12 @@ Two dimensionality reduction methods are explore, Near-Zero Variance (NVZ) and P
 
 ## Near Zero Variance
 
-The near zero variance method looks at the distribution of variables across the dataset and identifies features with low percentages of unique values. These variables are essentially constants and contain no information. As previously shown, the dataset is sparse and the majority of the pixels are always zero. The resulsting dataset  
+The near zero variance method looks at the distribution of variables across the dataset and identifies features with low percentages of unique values. These variables are essentially constants and contain no information. As previously shown, the dataset is sparse and the majority of the pixels are always zero. The resulsting dataset.
 
+```{r}
+nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
+image(matrix(1:784 %in% nonzero_var, 28, 28))
+```
 
 ```{r}
 x <- nearZeroVar(X, saveMetrics = TRUE)
@@ -146,7 +145,7 @@ x
 
 ```{r}
 nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
-mnist_subset_reduced <- mnist_subset[ , nonzero_var]
+X <- mnist_subset[ , -nonzero_var]
 ```
 
 
@@ -154,7 +153,7 @@ mnist_subset_reduced <- mnist_subset[ , nonzero_var]
 ## PCA
 
 ```{r}
-pca <- prcomp(select(mnist_raw, -X1), center = TRUE, scale = FALSE)
+pca <- prcomp(select(mnist_raw_subset, -X1), center = TRUE, scale = FALSE)
 summary(pca)
 qqnorm(pca[["x"]][,1])
 
