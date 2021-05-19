@@ -4,7 +4,7 @@ author: "Mael Illien, Dhairav Chhatbar, Santosh Manjrekar"
 date: "5/7/2021"
 output: 
   html_document:
-    code_folding: show
+    code_folding: hide
     theme: cosmo
     highlight: tango
     toc: true
@@ -19,7 +19,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Setup
+# Setup
 
 ```{r message=FALSE, warning=FALSE}
 library(skimr)
@@ -34,79 +34,55 @@ library(Rtsne)
 library(RColorBrewer)
 ```
 
-# Data
+# Data Description
+
 ```{r message=FALSE, warning=FALSE}
 mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
 mnist_raw_test <- read_csv("https://pjreddie.com/media/files/mnist_test.csv", col_names = FALSE)
 ```
-The MNIST dataset is a set of handwritten numbers (digits) for use with supervised machine learning classification applications.The datset is fairly large with 70,000 observations where each observation is a handwritten digit from various subjects, therefore each handwritten digit of the same number can have differences due to penmanship style and variation within the same penmanship style.
+
+The MNIST dataset is a compilation of handwritten digits which have been digitzed for use in supervised machine learning classification applications. The datset is fairly large with 60,000 observations where each observation is a handwritten digit from various subjects. As a result of this diversity, each handwritten digit of the same number can have differences due to penmanship style and variation within the same penmanship style.
 
 Each handwritten digit is on a 28x28 pixel image. The digits per observation range from 0 to 9 where each observation/digit in the 28x28 pixel have had their size normalized and have been centered on the image canvas. 
 
-Below is a sample of the number 3 from one of the observations in the dataset. Note that the images are grayscale
+Below is a sample of observations from the dataset. Note that the images are grayscale. Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. 
+
 ```{r}
-x <- 8
-
-m <- t(matrix(mnist_raw[x,] %>% select(-X1), ncol = 28))
-m2 <- matrix(unlist(m), nrow = 28, byrow = FALSE)
-dimnames(m) <-list(rep("", dim(m)[1]), rep("", dim(m)[2]))
-
-rotate <- function(x) t(apply(x, 2, rev))
-image(rotate(m2), col=gray((255:0)/255))
+pixels_gathered <- mnist_subset %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2, x = pixel %% 28, y = 28 - pixel %/% 28)
+theme_set(theme_light())
+pixels_gathered %>%  filter(instance <=12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label) + scale_fill_gradient(low = "white", high = "black")
 ```
 
-Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. Below is an a matrix representation of the number 3 (observation 8)
-```{r}
-cat("Label: ", mnist_raw$X1[x], "\n")
-m
-```
+
+
 To represent each matrix as an observation, each digit matrix has been flattened (converting from a multidimensional array to a single dimensional array) such that each observation is a integer list of ($28x28=784$) length 784, where each value in the list is the pixel value ranging from 0 to 255. This list has an additional value which contains a number from the range 0-9 containing the label value of the number represented by the image, bringing the length per observation to 785.  
   
-Bringing this all together, the dataset has 70,000 observations (60,000 training and 10,000 testing), 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. 
-
+Bringing this all together, the dataset has 60,000 observations, 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. To ease computation time, a subset of 5,000 observations was used in this modeling exercise.
 
 ```{r}
 # Reduce the dataset down from 60,000 observations
 mnist_subset <- mnist_raw %>%  head(5000)
 # Relabel X1 and add instance number
 mnist_subset <- mnist_subset  %>%  rename(label = X1) %>%  mutate(instance = row_number())
-# Gather columns into x, y values
-mnist_subset 
-```
-
-```{r}
+# Split dataset into X and y
 X <- mnist_subset %>% select(contains('X'))
 y <- mnist_subset$label 
 ```
 
 
-```{r}
-pixels_gathered <- mnist_subset %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2, x = pixel %% 28, y = 28 - pixel %/% 28)
-pixels_gathered
-```
-
-
-Example instances. Replace by 10x10 tile plot shoring 10 instance of 1 number for every row
-
-```{r}
-theme_set(theme_light())
-pixels_gathered %>%  filter(instance <=12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label) + scale_fill_gradient(low = "white", high = "black")
-```
-
-
 # Data Exploration
 
-Fairly even distribution. Can also try random sampling instead of head(10000) at the top.
+The distribution of the draw of 5,000 samples from dataset is displayed below. The distribution is fairly even, though we note that the number 2 is largely more represented than the number 5.  
 
 ```{r}
-ggplot(mnist_subset, aes(label)) + geom_bar()
+ggplot(mnist_subset, aes(label)) + geom_bar(fill="steelblue")
 ```
 
 The majority of points are either 0 (white) or 255 (black). Most values are not useful. Dimensionality reduction
 
 
 ```{r}
-ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256)
+ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256, fill="steelblue")
 ```
 
 ```{r}
@@ -149,12 +125,19 @@ ggplot(tsne_coords, aes(x=X, y=Y, color=Label)) + geom_point(size = 1) + scale_c
 ```
 
 
-## Data Processing
-
-Dimensionality Reduction
+# Data Processing
 
 
-Near Zero Variance
+
+## Dimensionality Reduction
+
+Two dimensionality reduction methods are explore, Near-Zero Variance (NVZ) and Principal Component Analysis (PCA).
+
+
+## Near Zero Variance
+
+The near zero variance method looks at the distribution of variables across the dataset and identifies features with low percentages of unique values. These variables are essentially constants and contain no information. As previously shown, the dataset is sparse and the majority of the pixels are always zero. The resulsting dataset  
+
 
 ```{r}
 x <- nearZeroVar(X, saveMetrics = TRUE)
@@ -162,12 +145,14 @@ x
 ```
 
 ```{r}
+nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
 mnist_subset_reduced <- mnist_subset[ , nonzero_var]
 ```
 
 
 
-### PCA
+## PCA
+
 ```{r}
 pca <- prcomp(select(mnist_raw, -X1), center = TRUE, scale = FALSE)
 summary(pca)
@@ -197,7 +182,7 @@ head(mnist_pca_reduced)
 
 # Modeling
 
-## KNN
+
 ```{r}
 # Data Partitioning
 set.seed(622)
@@ -209,6 +194,10 @@ y_test <- y[-trainIndex]
 y_train <- as.factor(y_train)
 y_test <- as.factor(y_test)
 ```
+
+## KNN
+
+preProcess = c("center","scale")?
 
 ```{r}
 trControl <- trainControl(method  = "cv", number  = 3)
@@ -261,21 +250,22 @@ confusionMatrix(nb_pred, as.factor(mnist_raw_test$X1))
 
 #svm_m_best <- svm_base_m$best.model
 
-mnist_col_reduced <- mnist_raw[ ,colSums(mnist_raw) > 0]
-
-svm_m_best <- svm(as.factor(mnist_col_reduced$X1) ~., data = mnist_col_reduced, kernel = "linear", cost = 10, scale = FALSE)
-
-svm_base_pred <- predict(svm_m_best, newdata = adhd_base_testing, type="class")
-svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
-base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
-                     Features=ncol(adhd_base_training)-1,
-                      Cumulative_Proportion=100)
-base_method
+# mnist_col_reduced <- mnist_raw[ ,colSums(mnist_raw) > 0]
+# 
+# svm_m_best <- svm(as.factor(mnist_col_reduced$X1) ~., data = mnist_col_reduced, kernel = "linear", cost = 10, scale = FALSE)
+# 
+# svm_base_pred <- predict(svm_m_best, newdata = adhd_base_testing, type="class")
+# svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
+# base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
+#                      Features=ncol(adhd_base_training)-1,
+#                       Cumulative_Proportion=100)
+# base_method
 ```
 
 ##Random Forest
 
 ```{r}
+library(randomForest)
 rf <- randomForest(x = X_train , y = y_train, xtest = X_test, ntree = 200)
 rf
 ```
