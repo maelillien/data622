@@ -194,6 +194,13 @@ y_train <- as.factor(y_train)
 y_test <- as.factor(y_test)
 ```
 
+```{r}
+performance_df <- data.frame(Model = NULL, Accuracy = NULL, Kappa = NULL)
+perf_dt <- data.frame(Model = "Base Decision Tree", Accuracy = dt_cm$overall[1], Kappa = dt_cm$byClass[1])
+performance_df <- rbind(performance_df, perf_dt)
+```
+
+
 ## KNN
 
 preProcess = c("center","scale")?
@@ -219,8 +226,7 @@ plot(knn.fit)
 knnPredict <- predict(knn.fit, newdata = X_test) 
 confusionMatrix(knnPredict, y_test)
 ```
-```{r}
-```
+
 
 ## Multinomial Naive Bayes
 
@@ -261,7 +267,7 @@ confusionMatrix(nb_pred, as.factor(mnist_raw_test$X1))
 # base_method
 ```
 
-##Random Forest
+## Random Forest
 
 ```{r}
 library(randomForest)
@@ -280,3 +286,51 @@ Overall accuracy
 ```{r}
 varImpPlot(rf)
 ```
+
+## Gradient Boosting
+
+```{r}
+library(gbm)
+```
+
+```{r}
+gbmGrid <-  expand.grid(interaction.depth = c(9, 15), 
+                        n.trees = (1:10)*25, 
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+#trControl <- trainControl(method  = "cv", number  = 3)
+
+# gbm.fit <- train(X_train, y_train,
+#              method     = "gbm",
+#              tuneGrid   = gbmGrid)
+#              #trControl  = trControl)
+
+gbm.fit <- train(X_train, y_train,
+             method     = "gbm",
+             interaction.depth = 9, 
+              n.trees = 250, 
+              shrinkage = 0.1,
+              n.minobsinnode = 20)
+```
+
+Tuning parameter 'shrinkage' was held constant at a value of 0.1
+Tuning parameter 'n.minobsinnode' was held constant at a value of 20
+Accuracy was used to select the optimal model using the largest value.
+The final values used for the model were n.trees = 90, interaction.depth = 9, shrinkage = 0.1 and n.minobsinnode = 20.
+
+```{r}
+#gbm.fit
+```
+
+
+```{r}
+plot(gbm.fit)
+```
+
+```{r}
+gbmPredict <- predict(gbm.fit, newdata = X_test) 
+confusionMatrix(knnPredict, y_test)
+```
+
+
