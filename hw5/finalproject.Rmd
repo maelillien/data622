@@ -39,27 +39,7 @@ library(RColorBrewer)
 ```{r message=FALSE, warning=FALSE}
 mnist_raw <- read_csv("https://pjreddie.com/media/files/mnist_train.csv", col_names = FALSE)
 mnist_raw_test <- read_csv("https://pjreddie.com/media/files/mnist_test.csv", col_names = FALSE)
-```
 
-The MNIST dataset is a compilation of handwritten digits which have been digitzed for use in supervised machine learning classification applications. The datset is fairly large with 60,000 observations where each observation is a handwritten digit from various subjects. As a result of this diversity, each handwritten digit of the same number can have differences due to penmanship style and variation within the same penmanship style.
-
-Each handwritten digit is on a 28x28 pixel image. The digits per observation range from 0 to 9 where each observation/digit in the 28x28 pixel have had their size normalized and have been centered on the image canvas. 
-
-Below is a sample of observations from the dataset. Note that the images are grayscale. Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. 
-
-```{r}
-pixels_gathered <- mnist_subset %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2, x = pixel %% 28, y = 28 - pixel %/% 28)
-theme_set(theme_light())
-pixels_gathered %>%  filter(instance <=12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label) + scale_fill_gradient(low = "white", high = "black")
-```
-
-
-
-To represent each matrix as an observation, each digit matrix has been flattened (converting from a multidimensional array to a single dimensional array) such that each observation is a integer list of ($28x28=784$) length 784, where each value in the list is the pixel value ranging from 0 to 255. This list has an additional value which contains a number from the range 0-9 containing the label value of the number represented by the image, bringing the length per observation to 785.  
-  
-Bringing this all together, the dataset has 60,000 observations, 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. To ease computation time, a subset of 5,000 observations was used in this modeling exercise.
-
-```{r}
 # Reduce the dataset down from 60,000 observations
 mnist_subset <- mnist_raw %>%  head(5000)
 # Relabel X1 and add instance number
@@ -68,6 +48,29 @@ mnist_subset <- mnist_subset  %>%  rename(label = X1) %>%  mutate(instance = row
 X <- mnist_subset %>% select(contains('X'))
 y <- mnist_subset$label 
 ```
+
+
+
+The MNIST dataset is a compilation of handwritten digits which have been digitzed for use in supervised machine learning classification applications. The datset is fairly large with 60,000 observations where each observation is a handwritten digit from various subjects. As a result of this diversity, each handwritten digit of the same number can have differences due to penmanship style and variation within the same penmanship style.
+
+Each handwritten digit is on a 28x28 pixel image. The digits per observation range from 0 to 9 where each observation/digit in the 28x28 pixel have had their size normalized and have been centered on the image canvas. 
+
+Below is a sample of observations from the dataset. Note that the images are grayscale. Each every pixel on the canvas is represented by a integer range from 0 to 255, where 0 means the pixel is completely white and 255 means the pixel is completely black, the ranges from 1 to 254 are the various shades of the color gray. Since each image is 28x28 pixels in size, then each image can be represented by a 28x28 size matrix. 
+
+
+```{r}
+pixels_gathered <- mnist_subset %>%  gather(pixel, value, -label, -instance) %>%  tidyr::extract(pixel, "pixel", "(\\d+)", convert = TRUE) %>%  mutate(pixel = pixel - 2, x = pixel %% 28, y = 28 - pixel %/% 28)
+theme_set(theme_light())
+pixels_gathered %>%  filter(instance <=12) %>%  ggplot(aes(x, y, fill = value)) +  geom_tile() +  facet_wrap(~ instance + label) + scale_fill_gradient(low = "white", high = "black")
+```
+
+
+To represent each matrix as an observation, each digit matrix has been flattened (converting from a multidimensional array to a single dimensional array) such that each observation is a integer list of ($28x28=784$) length 784, where each value in the list is the pixel value ranging from 0 to 255. This list has an additional value which contains a number from the range 0-9 containing the label value of the number represented by the image, bringing the length per observation to 785.  
+
+Below is the matrix representation of observation #8 from the sample above.  
+![Matrix Representation of observation #8, the number 3](https://github.com/maelillien/data622/raw/main/hw5/Number3.png)  
+  
+Bringing this all together, the dataset has 60,000 observations, 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. To ease computation time, a subset of 5,000 observations was used in this modeling exercise.
 
 
 # Data Exploration
@@ -85,9 +88,9 @@ The majority of points are either 0 (white) or 255 (black). Most values are not 
 ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256, fill="steelblue")
 ```
 
-The figure below is a representation of the average pixels values for the 10 digits in the dataset. The fuzzy, grey areas are zones of high variability. We can notice the most variability in the tails and long strokes of some digits. On the othre hand, some digits such as 0 and 1 have highler pixel concrentrations. 
+The figure below is a representation of the average pixels values for the 10 digits in the dataset. The fuzzy, grey areas are zones of high variability. We can notice the most variability in the tails and long strokes of some digits. On the other hand, some digits such as 0 and 1 have higher pixel concentrations. 
 
-```{r}
+```{r, warning=FALSE}
 pixel_summary <- pixels_gathered %>%  group_by(x, y, label) %>%  summarize(mean_value = mean(value)) %>%  ungroup()
 pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_fill_gradient2(low = "white", high = "black", mid = "gray", midpoint = 127.5) +  facet_wrap(~ label, nrow = 2) +  labs(title = "Average value of each pixel in 10 MNIST digits", fill = "Average value") +  theme_void()
 ```
@@ -101,33 +104,23 @@ ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() 
 
 
 
-```{r}
-x <- 8
-cat("Label: ", mnist_raw$X1[x], "\n")
-m <- t(matrix(mnist_raw[x,] %>% select(-X1), ncol = 28))
-dimnames(m) <-list(rep("", dim(m)[1]), rep("", dim(m)[2]))
-m
-
-```
-
-
-T-SNE Visual
-```{r}
-
-tsne_v <- Rtsne(as.matrix(select(mnist_subset, -label)), dims=2, check_duplicates = FALSE, pca = TRUE, pca_scale = FALSE, theta = 0.1 , perplexity = 45)
-tsne_coords = data.frame(X=tsne_v$Y[,1], Y=tsne_v$Y[,2], Label=as.factor(mnist_subset$label))
-ggplot(tsne_coords, aes(x=X, y=Y, color=Label)) + geom_point(size = 1) + scale_color_brewer(palette = "Set3") + theme_dark()
-```
-
-
 # Data Processing
 
 
 
 ## Dimensionality Reduction
 
-Two dimensionality reduction methods are explore, Near-Zero Variance (NVZ) and Principal Component Analysis (PCA).
+Two dimensionality reduction methods are explore, Near-Zero Variance (NVZ) and Principal Component Analysis (PCA). Another dimensionality reduction technique is t-Distributed Stochastic Neighbor Embedding (t-SNE), though is mainly used for visual exploration
 
+## t-Distributed Stochastic Neighbor Embedding (t-SNE)
+t-SNE is a dimensionality reduction technique that will project high dimension data into a two dimensional plane. It is an unsupervised technique that helps identify patters or clusters in the dataset. While the results of the t-SNE reduction cannot be used directly in models t-SNE helps in understanding the underlying data and relationships within and if there is good seperation from t-SNE then models are more likely to ahve better accuracy on unseen data.
+  
+From the below t-SNE visulization we see that some digits cluster better than other digits. 0 is well clustered and is seperated, as well as 1 and 6. The other are scattered in various smaller groups
+```{r}
+tsne_v <- Rtsne(as.matrix(select(mnist_subset, -label)), dims=2, check_duplicates = FALSE, pca = TRUE, pca_scale = FALSE, theta = 0.1 , perplexity = 45)
+tsne_coords <- data.frame(X=tsne_v$Y[,1], Y=tsne_v$Y[,2], Label=as.factor(mnist_subset$label))
+ggplot(tsne_coords, aes(x=X, y=Y, color=Label)) + geom_point(size = 1) + labs(title = "t-SNE Cluster Visualization MNIST Digits") + scale_color_brewer(palette = "Set3") + theme_dark()
+```
 
 ## Near Zero Variance
 
@@ -151,30 +144,53 @@ X <- mnist_subset[ , -nonzero_var]
 
 
 ## PCA
+Principal Comnponent Analysis (PCA) is a dimensionality reduction technique where a dataset is transformed to use p eigenvectors of the covariance matrix instead of the original number of predictors n, where p < n. The number of eigenvectors p is selected by looking at the sorted eigenvalues and determining a threshold percentage of variance explained and the resulting p.  
+  
+The method seeks to project the data into a lower dimensional space where each axis (or principal component) captures the most variability in the data subject to the condition of being uncorrelated to the other axes. This last condition is important for dimensionality reduction in the sense that large datasets can contain many correlated variables which hold no additional information.
+
 
 ```{r}
-pca <- prcomp(select(mnist_raw_subset, -X1), center = TRUE, scale = FALSE)
-summary(pca)
+pca <- prcomp(select(mnist_raw, -X1), center = TRUE, scale = FALSE)
 qqnorm(pca[["x"]][,1])
-
 ```
+Compared to t-SNE, the PCA reduction is much less useful and non-interpretable. This is becuase the first two Principal Components only explain approximately 18% of the variance. To get to a higher percentage of the variance explained, we will have to increase our dimensions. 
 ```{r}
-pca %>% get_eigenvalue() %>% head(10)
+fviz_pca_ind(pca,
+             geom.ind = "point", 
+             col.ind = as.factor(mnist_raw$X1),
+             addEllipses = TRUE,
+             legend.title = "Digits")
 ```
+
+
+
+Post PCA execution there are 3 methods to reduce dimensionality. These 3 methods are:  
+  
+- The Kaiser Rule
+- The Scree Method
+- Cumulative Proportion of Variance Explained Method
+  
+
+*The Kaiser Rule* states that the optimal factor reduction is achieved by selecting Principal Components that have an eigenvalue greater than 1. An eigenvalue of 1 contains the same information as 1 variable Below are all dimensions/Principal Components that have the an eigenvalue that are greater than 1.
+  
+This results in far to many dimensions, 650 to be exact. This reduction would not reduce computation complexity significantly
+```{r}
+get_eigenvalue(pca) %>% filter(eigenvalue > 1)
+```
+*The Scree Method* states that the best number of components to reduce a dataset by is the component that forms an “elbow”. The scree plot shows that after the 3rd Principal component, additional components successively diminish in explaining the variance. 
+  
+The results of the scree plot shows that there is no such elbow to be found
 ```{r}
 pca %>% fviz_eig(addlabels = TRUE)
 ```
 
+The *Cumulative Proportion of Variance Explained Method* states that at least two-thirds of the variance is explained by the reduced feature set. In order words keep the number of Principal Components that cumulatively explain two-thirds of the variation and discard the Principal Components after the two-thirds mark. 
 
-```{r}
-get_eigenvalue(pca) %>% filter(eigenvalue > 1)
-```
+In this case we will opt to select at least 95% of cumulative variance explained, and this results in a dataset that is reduced to 154 dimensions instead of 784
 
 ```{r}
 reduced_dim_95 <- get_eigenvalue(pca) %>% filter(cumulative.variance.percent < 95.02)
 reduced_dim_95
-
-#mnist_pca_reduced <- cbind(as.data.frame(pca$x[,c(1:nrow(reduced_dim_95))]), Label = mnist_raw$X1)
 mnist_pca_reduced <- as.data.frame(pca$x[,c(1:nrow(reduced_dim_95))])
 head(mnist_pca_reduced)
 ```
@@ -185,7 +201,7 @@ head(mnist_pca_reduced)
 ```{r}
 # Data Partitioning
 set.seed(622)
-trainIndex <- createDataPartition(mnist_subset_reduced$label, p = .8, list = FALSE, times = 1)
+trainIndex <- createDataPartition(mnist_subset$label, p = .8, list = FALSE, times = 1)
 X_train <- X[trainIndex,]
 y_train <- y[trainIndex]
 X_test <- X[-trainIndex,]
@@ -198,7 +214,7 @@ y_test <- as.factor(y_test)
 
 preProcess = c("center","scale")?
 
-```{r}
+```{r, warning=FALSE}
 trControl <- trainControl(method  = "cv", number  = 3)
 knn.fit <- train(X_train, y_train,
              method     = "knn",
@@ -222,44 +238,19 @@ confusionMatrix(knnPredict, y_test)
 ```{r}
 ```
 
-## Multinomial Naive Bayes
-
-```{r}
-
+## Multinomial Naïve Bayes
+Naïve Bayes is a set of probabilistic algorithms that utilizes Bayes’ Theorem and probability theory to make predictions such that the algorithm looks to determine the probability of an event A given the probability that another event B has already occurred. 
+```{r, warning=FALSE}
 nb <- multinomial_naive_bayes(select(mnist_raw, -X1), as.factor(mnist_raw$X1), laplace=5)
 summary(nb)
 nb_pred <- predict(nb, newdata = data.matrix(select(mnist_raw_test, -X1)), type = "class")
-
-
 ```
-
+The Naïve Bayes model completed with an overall 83% accuracy on the test dataset and finished within seconds. The speed at which the Naïve Bayes model completes gives it a unique advantage when computational complexity and speed are driving factors. The digits that it misclassified the most compared to other digits are 5, 4, and 8. 
 ```{r}
 confusionMatrix(nb_pred, as.factor(mnist_raw_test$X1))
-
 ```
 
-## Support Vector Machine
-```{r}
-# svm_base_m <- tune(svm, X1 ~., data = mnist_raw, ranges=list(
-#   kernel=c("linear", "polynomial", "radial", "sigmoid"),
-#   cost=2^(1:8),
-#   epsilon = seq(0,1,0.1)))
 
-
-
-#svm_m_best <- svm_base_m$best.model
-
-# mnist_col_reduced <- mnist_raw[ ,colSums(mnist_raw) > 0]
-# 
-# svm_m_best <- svm(as.factor(mnist_col_reduced$X1) ~., data = mnist_col_reduced, kernel = "linear", cost = 10, scale = FALSE)
-# 
-# svm_base_pred <- predict(svm_m_best, newdata = adhd_base_testing, type="class")
-# svm_base_cm <- confusionMatrix(svm_base_pred, adhd_base_testing$Suicide)
-# base_method <- cbind(Reduction_Method = "Base Data", svm_base_m$best.parameters, Training_Accuracy = 1-svm_base_m$best.performance, Testing_Accuracy = sum(diag(svm_base_cm$table))/sum(svm_base_cm$table),
-#                      Features=ncol(adhd_base_training)-1,
-#                       Cumulative_Proportion=100)
-# base_method
-```
 
 ##Random Forest
 
