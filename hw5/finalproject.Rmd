@@ -71,8 +71,7 @@ To represent each matrix as an observation, each digit matrix has been flattened
 Below is the matrix representation of observation #8 from the sample above.  
 ![Matrix Representation of observation #8, the number 3](https://github.com/maelillien/data622/raw/main/hw5/Number3.png)  
   
-Bringing this all together, the dataset has 60,000 observations, 784 features and 1 classification label. The dataset of digital images is now represented mathematically that we can perform additional analysis and modeling on it. To ease computation time, a subset of 5,000 observations was used in this modeling exercise.
-
+Bringing this all together, the dataset has 60,000 observations, 784 features and 1 classification label. The dataset of digital images is now represented in a format suitable for analysis and modeling. To ease computation time, a subset of 5,000 observations was used in this modeling exercise.
 
 
 
@@ -86,23 +85,11 @@ plot2 <- ggplot(pixels_gathered, aes(value)) +  geom_histogram(bins=256, fill="s
 grid.arrange(plot1, plot2, ncol=2)
 ```
 
-The figure below is a representation of the average pixels values for the 10 digits in the dataset. The fuzzy, grey areas are zones of high variability. We can notice the most variability in the tails and long strokes of some digits. On the othre hand, some digits such as 0 and 1 have highler pixel concrentrations. 
-
+The figure below is a representation of the average pixels values for the 10 digits in the dataset. The fuzzy, grey areas are zones of high variability. We can notice the most variability in the tails and long strokes of some digits. On the other hand, some digits such as 0 and 1 have highler pixel concrentrations. 
 ```{r message=FALSE, warning=FALSE}
 pixel_summary <- pixels_gathered %>%  group_by(x, y, label) %>%  summarize(mean_value = mean(value)) %>%  ungroup()
 pixel_summary %>%  ggplot(aes(x, y, fill = mean_value)) +  geom_tile() +  scale_fill_gradient2(low = "white", high = "black", mid = "gray", midpoint = 127.5) +  facet_wrap(~ label, nrow = 2) +  labs(title = "Average value of each pixel in 10 MNIST digits", fill = "Average value") +  theme_void()
 ```
-
-MI: thinking of removing this
-
-```{r}
-digit_differences <- crossing(compare1 = 0:9, compare2 = 0:9) %>%  filter(compare1 != compare2) %>%  mutate(negative = compare1, positive = compare2) %>%  gather(class, label, positive, negative) %>%  inner_join(pixel_summary, by = "label") %>%  select(-label) %>%  spread(class, mean_value)
-ggplot(digit_differences, aes(x, y, fill = positive - negative)) +  geom_tile() +  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +  facet_grid(compare2 ~ compare1) +  theme_void() +  labs(title = "Pixels that distinguish pairs of MNIST images")
-```
-
-
-
-
 
 # Data Processing
 
@@ -122,7 +109,7 @@ ggplot(tsne_coords, aes(x=X, y=Y, color=Label)) + geom_point(size = 1) + labs(ti
 
 ### Near Zero Variance
 
-The near zero variance method looks at the distribution of variables across the dataset and identifies features with low percentages of unique values. These variables are essentially constants and contain no information. As previously shown, the dataset is sparse and the majority of the pixels are always zero. The resulsting dataset retains only 250 variables.
+The near zero variance method looks at the distribution of variables across the dataset and identifies features with low percentages of unique values. These variables are essentially constants and contain no information. As previously shown, the dataset is sparse and the majority of the pixels are always zero. The resulsting dataset retains only 250 variables. The figure below is a representation of the most variable pixels on the image canvas.
 
 ```{r}
 nonzero_var <- nearZeroVar(X, saveMetrics = FALSE)
@@ -209,7 +196,9 @@ performance_df <- data.frame(Model = NULL, Accuracy = NULL, Kappa = NULL)
 
 ## KNN
 
-The KNN algorithm uses distance between observation points to determine their classification. It is typical to scale the variables in order to even out the influence of variables with large values. In our case, all variables are already on the same scale so no additional processing is required.
+K-Nearest Neighbors (KNN) algorithm is non-parametric in the sense that no coefficients are estimated. Instead KNN uses distances between observation points and identifies the k closest datapoints to determine the classification. It is typical to scale the variables in order to even out the influence of variables with large values. In our case, all variables are already on the same scale so no additional processing is required.
+
+Cross-validation over 3 folds and various values of k are used in determining the optimal parameter. The highest accuracy on the training set is reached used a model with only a single neighbor. The classification results on the test set are displayed below. This 1-NN model reaches an accuracy of 94.9%.
 
 ```{r message=FALSE, warning=FALSE}
 trControl <- trainControl(method  = "cv", number  = 3)
@@ -268,6 +257,7 @@ varImpPlot(rf)
 
 ## Gradient Boosting
 
+With gradient boosting, trees are grown in a sequential way using information from previously grown trees. Boosting does not involve bootstrap sampling, instead each tree is fit on a modified version of the original data set. Unlike fitting a single large decision tree (fitting the data hard) which can lead to overfitting, the boosting approach learns slowly. Given a current model, a decision tree is fit to the residuals from the model. Each of these trees can be rather small, with just a few terminal nodes (determined by the interaction depth parameter). By fitting small trees to the residuals, we slowly improve our estimate in areas where it does not perform well. The shrinkage parameter further slows the process down. Cross-validation over 3 folds was used to determine the optimal number of trees. This model reached 94.3% accuracy.
 
 ```{r}
 gbmGrid <-  expand.grid(interaction.depth = 9, 
@@ -296,10 +286,13 @@ gbm_cm
 
 # Results
 
+The results are displayed below.
+
 ```{r}
 rownames(performance_df) <- NULL
 performance_df 
 ```
+We can take a look at some of the misclassified instances to evaluate where the model might have gone wrong. On the tile plot below, the predicted number is on the top of the cell, and the actualy digit just below it. We see that most of the instances are obvious mistakes. Other than the middle 6 and 8 and the last 7 which are faily distorted, the other digits remain easily disinguishable to our eyes. 
 
 ```{r}
 misclass <- data.frame(knn_pred=knnPredict,y_test=y_test)
